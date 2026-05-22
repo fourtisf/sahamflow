@@ -1,0 +1,211 @@
+"""Sync pipeline: pull OHLCV, compute regime, generate signals (Tahap 0/1/2/3).
+
+These functions are called both by the cron scheduler and the admin sync
+endpoints. Everything is upsert-based so re-running a day is idempotent.
+"""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+import pandas as pd
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+
+from app.core.config import SEED_TICKERS
+from app.core.database import SessionLocal
+from app.data_sources import yahoo_finance as yf
+from app.models import OHLCVDaily, RegimeHistory, SignalCache, Stock
+from app.services import (
+    bandar_detector,
+    foreign_flow_analyzer,
+    regime_classifier,
+    technical_analysis,
+)
+
+
+def seed_stocks(tickers: list[str] | None = None) -> int:
+    tickers = tickers or SEED_TICKERS
+    count = 0
+    with SessionLocal() as db:
+        for t in tickers:
+            info = yf.fetch_info(t)
+            stmt = insert(Stock).values(
+                ticker=info["ticker"],
+                name=info.get("name"),
+                sector=info.get("sector"),
+                market_cap=info.get("market_cap"),
+                is_active=True,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["ticker"],
+                set_={
+                    "name": stmt.excluded.name,
+                    "sector": stmt.excluded.sector,
+                    "market_cap": stmt.excluded.market_cap,
+                },
+            )
+            db.execute(stmt)
+            count += 1
+        db.commit()
+    return count
+
+
+def sync_ohlcv(tickers: list[str] | None = None, period: str = "1mo") -> dict:
+    tickers = tickers or SEED_TICKERS
+    summary: dict[str, int] = {}
+    with SessionLocal() as db:
+        for t in tickers:
+            records = yf.fetch_ohlcv_records(t, period=period)
+            for rec in records:
+                stmt = insert(OHLCVDaily).values(**rec)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["ticker", "date"],
+                    set_={
+                        "open": stmt.excluded.open,
+                        "high": stmt.excluded.high,
+                        "low": stmt.excluded.low,
+                        "close": stmt.excluded.close,
+                        "volume": stmt.excluded.volume,
+                        "value": stmt.excluded.value,
+                    },
+                )
+                db.execute(stmt)
+            summary[t] = len(records)
+        db.commit()
+    return summary
+
+
+def load_ohlcv_df(db: Session, ticker: str, days: int = 250) -> pd.DataFrame:
+    rows = db.execute(
+        select(OHLCVDaily)
+        .where(OHLCVDaily.ticker == ticker)
+        .order_by(OHLCVDaily.date)
+    ).scalars().all()
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(
+        [
+            {
+                "date": r.date,
+                "open": float(r.open) if r.open is not None else None,
+                "high": float(r.high) if r.high is not None else None,
+                "low": float(r.low) if r.low is not None else None,
+                "close": float(r.close) if r.close is not None else None,
+                "volume": int(r.volume) if r.volume is not None else 0,
+                "foreign_net": r.foreign_net,
+            }
+            for r in rows
+        ]
+    ).set_index("date")
+    return df.tail(days)
+
+
+def generate_signals(tickers: list[str] | None = None, on: date | None = None) -> dict:
+    tickers = tickers or SEED_TICKERS
+    on = on or date.today()
+    summary: dict[str, float] = {}
+    with SessionLocal() as db:
+        for t in tickers:
+            df = load_ohlcv_df(db, t)
+            if df.empty or len(df) < 20:
+                continue
+            score, indicators = technical_analysis.composite_score(df)
+            foreign_5d = (
+                int(df["foreign_net"].dropna().tail(5).sum())
+                if df["foreign_net"].notna().any()
+                else None
+            )
+            bandar = bandar_detector.detect(df, foreign_5d)
+            ff = foreign_flow_analyzer.analyze(list(df["foreign_net"]))
+
+            stmt = insert(SignalCache).values(
+                ticker=t,
+                date=on,
+                composite_score=round(score, 3),
+                indicators={**indicators, "signal_label": technical_analysis.signal_label(score)},
+                foreign_signal=ff.get("signal") if ff.get("has_data") else None,
+                bandar_phase=bandar["phase"],
+                bandar_score=bandar["score"],
+                ai_predict=None,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["ticker", "date"],
+                set_={
+                    "composite_score": stmt.excluded.composite_score,
+                    "indicators": stmt.excluded.indicators,
+                    "foreign_signal": stmt.excluded.foreign_signal,
+                    "bandar_phase": stmt.excluded.bandar_phase,
+                    "bandar_score": stmt.excluded.bandar_score,
+                },
+            )
+            db.execute(stmt)
+            summary[t] = round(score, 3)
+        db.commit()
+    return summary
+
+
+def compute_regime(on: date | None = None) -> dict:
+    """Compute the regime from universe breadth + (when available) foreign flow.
+
+    With the Yahoo-only MVP, foreign/fx/yield/dispersion inputs are sparse, so the
+    regime leans on breadth and MA200 position. Sparse factors stay 0 (neutral)
+    rather than being fabricated.
+    """
+    on = on or date.today()
+    with SessionLocal() as db:
+        advances = declines = 0
+        ma200_signals: list[float] = []
+        foreign_5d_total = 0
+        has_foreign = False
+
+        for t in SEED_TICKERS:
+            df = load_ohlcv_df(db, t)
+            if df.empty or len(df) < 2:
+                continue
+            if df["close"].iloc[-1] >= df["close"].iloc[-2]:
+                advances += 1
+            else:
+                declines += 1
+            ma200 = df["close"].rolling(min(200, len(df))).mean().iloc[-1]
+            ma200_signals.append(
+                regime_classifier.norm_ma200(df["close"].iloc[-1], ma200)
+            )
+            if df["foreign_net"].notna().any():
+                has_foreign = True
+                foreign_5d_total += int(df["foreign_net"].dropna().tail(5).sum())
+
+        factors = {
+            "breadth": regime_classifier.norm_breadth(advances, declines),
+            "foreign": regime_classifier.norm_foreign(foreign_5d_total) if has_foreign else 0.0,
+            "ma200": sum(ma200_signals) / len(ma200_signals) if ma200_signals else 0.0,
+            "fx": 0.0,
+            "yield": 0.0,
+            "dispersion": 0.0,
+        }
+        result = regime_classifier.classify_regime(factors)
+
+        stmt = insert(RegimeHistory).values(
+            date=on,
+            regime=result["regime"],
+            confidence=result["confidence"],
+            breadth_ratio=round(advances / declines, 2) if declines else None,
+            foreign_flow_5d=foreign_5d_total if has_foreign else None,
+            raw_score=result["raw_score"],
+            extra={"factors": result["factors"], "advances": advances, "declines": declines},
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["date"],
+            set_={
+                "regime": stmt.excluded.regime,
+                "confidence": stmt.excluded.confidence,
+                "breadth_ratio": stmt.excluded.breadth_ratio,
+                "foreign_flow_5d": stmt.excluded.foreign_flow_5d,
+                "raw_score": stmt.excluded.raw_score,
+                "metadata": stmt.excluded.metadata,
+            },
+        )
+        db.execute(stmt)
+        db.commit()
+        return {**result, "advances": advances, "declines": declines}
