@@ -66,6 +66,7 @@ export default function Dashboard() {
   const [rows, setRows] = useState<ScreenerRow[]>([]);
   const [live, setLive] = useState(false);
   const [indices, setIndices] = useState<Record<string, Quote> | null>(null);
+  const [ihsg, setIhsg] = useState<{ closes: number[]; support: number | null; resistance: number | null; last: number | null } | null>(null);
 
   const [sel, setSel] = useState("BREN");
   const [modal, setModal] = useState("500.000.000");
@@ -74,10 +75,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     (async () => {
-      const [r, s, idx] = await Promise.all([
+      const [r, s, idx, hist] = await Promise.all([
         api.regimeCurrent(),
         api.screener(-1),
         api.indices(),
+        api.ihsgHistory(30),
       ]);
       if (r) setRegime(r);
       if (s && s.length) {
@@ -85,6 +87,14 @@ export default function Dashboard() {
         setLive(true);
       }
       if (idx) setIndices(idx);
+      if (hist && hist.history?.length) {
+        setIhsg({
+          closes: hist.history.map((h) => h.close),
+          support: hist.support,
+          resistance: hist.resistance,
+          last: hist.last,
+        });
+      }
     })();
   }, []);
 
@@ -211,7 +221,7 @@ export default function Dashboard() {
               <div className="brief">
                 <p>IHSG dalam fase <b>{regime?.regime || "—"}</b> dengan confidence <b>{regime?.confidence ?? "—"}%</b>. Skor multi-faktor saat ini <span className="k">{regime?.raw_score ?? "—"}</span> (rentang -1 sampai +1).</p>
                 <p>Breadth A/D <b>{regime?.breadth_ratio ?? "—"}×</b>. Narasi AI penuh tersedia setelah <span className="k">ANTHROPIC_API_KEY</span> aktif dan endpoint <span className="k">/brief/today</span> dipanggil.</p>
-                <p>Foreign flow & support/resistance konkret menyusul setelah scraper IDX (Tahap 3) mengisi data foreign net.</p>
+                <p>{ihsg?.support != null && ihsg?.resistance != null ? (<>Level kunci IHSG 30D: <span className="k">SUPPORT {ihsg.support.toLocaleString("id-ID")}</span> · <span className="k">RESIST {ihsg.resistance.toLocaleString("id-ID")}</span>. Foreign net masih menunggu data IDX (Tahap 3).</>) : "Foreign flow & support/resistance konkret menyusul setelah scraper IDX (Tahap 3) mengisi data foreign net."}</p>
               </div>
               <div className="bf">
                 <div className="bfc"><div className="bfc-l">Bias</div><div className="bfc-v up">▲ {regime && (regime.raw_score ?? 0) > 0 ? "BULLISH" : "NETRAL"}</div></div>
@@ -221,8 +231,8 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="pnl">
-            <div className="pnl-h"><span className="pnl-t">IHSG 30D</span><span className="pnl-n">Daily</span><div className="pnl-r gd">7,428.51</div></div>
-            <div className="pnl-b"><div className="cw"><IhsgChart data={IHSG_30D} /></div></div>
+            <div className="pnl-h"><span className="pnl-t">IHSG 30D</span><span className="pnl-n">Daily{ihsg ? "" : " · contoh"}</span><div className="pnl-r gd">{ihsg?.last != null ? ihsg.last.toLocaleString("id-ID") : "—"}</div></div>
+            <div className="pnl-b"><div className="cw"><IhsgChart data={ihsg?.closes?.length ? ihsg.closes : IHSG_30D} /></div></div>
           </div>
         </div>
 

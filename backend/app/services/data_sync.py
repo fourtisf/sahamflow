@@ -13,7 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.core.config import SEED_TICKERS
+import logging
+
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.data_sources import yahoo_finance as yf
 from app.models import OHLCVDaily, RegimeHistory, SignalCache, Stock
@@ -25,8 +27,11 @@ from app.services import (
 )
 
 
+log = logging.getLogger("sahamflow.data_sync")
+
+
 def seed_stocks(tickers: list[str] | None = None) -> int:
-    tickers = tickers or SEED_TICKERS
+    tickers = tickers or settings.universe
     count = 0
     with SessionLocal() as db:
         for t in tickers:
@@ -53,7 +58,7 @@ def seed_stocks(tickers: list[str] | None = None) -> int:
 
 
 def sync_ohlcv(tickers: list[str] | None = None, period: str = "1mo") -> dict:
-    tickers = tickers or SEED_TICKERS
+    tickers = tickers or settings.universe
     summary: dict[str, int] = {}
     with SessionLocal() as db:
         for t in tickers:
@@ -74,7 +79,17 @@ def sync_ohlcv(tickers: list[str] | None = None, period: str = "1mo") -> dict:
                 db.execute(stmt)
             summary[t] = len(records)
         db.commit()
-    return summary
+
+    # QA gate: do not let a silent empty/stale sync pass unnoticed.
+    empties = [t for t, n in summary.items() if n == 0]
+    if empties:
+        log.warning(
+            "OHLCV sync: %d/%d tickers returned 0 rows: %s",
+            len(empties), len(summary), ", ".join(empties),
+        )
+    if summary and len(empties) == len(summary):
+        log.error("OHLCV sync: ALL tickers empty — data source likely down.")
+    return {"rows": summary, "empty": empties, "ok": bool(summary) and len(empties) < len(summary)}
 
 
 def load_ohlcv_df(db: Session, ticker: str, days: int = 250) -> pd.DataFrame:
@@ -103,7 +118,7 @@ def load_ohlcv_df(db: Session, ticker: str, days: int = 250) -> pd.DataFrame:
 
 
 def generate_signals(tickers: list[str] | None = None, on: date | None = None) -> dict:
-    tickers = tickers or SEED_TICKERS
+    tickers = tickers or settings.universe
     on = on or date.today()
     summary: dict[str, float] = {}
     with SessionLocal() as db:
@@ -157,10 +172,11 @@ def compute_regime(on: date | None = None) -> dict:
     with SessionLocal() as db:
         advances = declines = 0
         ma200_signals: list[float] = []
+        ret_5d: list[float] = []
         foreign_5d_total = 0
         has_foreign = False
 
-        for t in SEED_TICKERS:
+        for t in settings.universe:
             df = load_ohlcv_df(db, t)
             if df.empty or len(df) < 2:
                 continue
@@ -172,17 +188,28 @@ def compute_regime(on: date | None = None) -> dict:
             ma200_signals.append(
                 regime_classifier.norm_ma200(df["close"].iloc[-1], ma200)
             )
+            if len(df) >= 6 and df["close"].iloc[-6]:
+                ret_5d.append((df["close"].iloc[-1] / df["close"].iloc[-6] - 1) * 100)
             if df["foreign_net"].notna().any():
                 has_foreign = True
                 foreign_5d_total += int(df["foreign_net"].dropna().tail(5).sum())
+
+        # Real macro: USD/IDR 30d trend; sector/stock dispersion of 5d returns.
+        try:
+            fx_chg = yf.usdidr_change_pct_30d()
+        except Exception:
+            fx_chg = None
+        dispersion_5d = (
+            float(pd.Series(ret_5d).std()) if len(ret_5d) >= 5 else None
+        )
 
         factors = {
             "breadth": regime_classifier.norm_breadth(advances, declines),
             "foreign": regime_classifier.norm_foreign(foreign_5d_total) if has_foreign else 0.0,
             "ma200": sum(ma200_signals) / len(ma200_signals) if ma200_signals else 0.0,
-            "fx": 0.0,
-            "yield": 0.0,
-            "dispersion": 0.0,
+            "fx": regime_classifier.norm_fx(fx_chg) if fx_chg is not None else 0.0,
+            "yield": regime_classifier.norm_yield(settings.SBN_10Y) if settings.SBN_10Y else 0.0,
+            "dispersion": regime_classifier.norm_dispersion(dispersion_5d) if dispersion_5d is not None else 0.0,
         }
         result = regime_classifier.classify_regime(factors)
 

@@ -35,11 +35,18 @@ def run(
     sl_pct: float = 0.06,
     tp_pct: float = 0.18,
     max_hold: int = 10,
+    cost_pct: float = 0.004,
+    slippage_pct: float = 0.002,
 ) -> dict:
     """ohlcv indexed by date with a 'close' column; entry_signal: bool per row.
 
     On each entry-signal bar, enter at next close and exit at TP, SL, or max_hold.
+
+    Honest costs: every round-trip is charged `cost_pct` (IDX broker fees + 0.1%
+    sell tax + levy, default ~0.4%) plus `slippage_pct` (default ~0.2% round-trip).
+    This is what separates a real backtest from a fantasy equity curve.
     """
+    round_trip_cost = cost_pct + slippage_pct
     close = ohlcv["close"].reset_index(drop=True)
     signals = entry_signal.reset_index(drop=True)
     dates = list(ohlcv.index)
@@ -67,6 +74,7 @@ def run(
                     break
             else:
                 ret = close.iloc[exit_i] / entry - 1
+            ret -= round_trip_cost  # charge fees + slippage on every trade
             trades.append(ret)
             equity.append(equity[-1] * (1 + ret))
             equity_dates.append(dates[exit_i])

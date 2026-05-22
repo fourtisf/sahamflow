@@ -109,6 +109,38 @@ def fetch_quote(symbol: str) -> dict | None:
     return {"value": round(last, 2), "change": round(change, 2), "change_pct": round(pct, 2)}
 
 
+def fetch_history(symbol: str, period: str = "1mo") -> list[dict]:
+    """Raw close history for an index/FX symbol (no .JK mangling).
+
+    Returns [{"date": "YYYY-MM-DD", "close": float}], oldest-to-newest. [] if none.
+    """
+    raw = yf.download(
+        symbol, period=period, interval="1d", auto_adjust=False, progress=False, threads=False
+    )
+    if raw is None or raw.empty:
+        return []
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.get_level_values(0)
+    closes = raw["Close"].dropna()
+    out = []
+    for idx, val in closes.items():
+        d = idx if isinstance(idx, date) else idx.date()
+        out.append({"date": str(d), "close": round(float(val), 2)})
+    return out
+
+
+def usdidr_change_pct_30d() -> float | None:
+    """USD/IDR % change over the trailing ~30d. Positive = rupiah weakening."""
+    hist = fetch_history("IDR=X", period="2mo")
+    if len(hist) < 2:
+        return None
+    recent = hist[-22:]  # ~1 trading month
+    first, last = recent[0]["close"], recent[-1]["close"]
+    if not first:
+        return None
+    return round((last / first - 1) * 100, 2)
+
+
 def fetch_info(ticker: str) -> dict:
     """Fetch metadata (name, sector, market cap) for stocks table seeding."""
     symbol = to_yahoo_symbol(ticker)

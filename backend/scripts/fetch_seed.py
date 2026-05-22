@@ -37,9 +37,11 @@ def run() -> int:
     print(f"  seeded {data_sync.seed_stocks()} stocks")
 
     print("Syncing 30d OHLCV...")
-    summary = data_sync.sync_ohlcv(period="1mo")
-    for t, n in summary.items():
+    result = data_sync.sync_ohlcv(period="1mo")
+    for t, n in result["rows"].items():
         print(f"  {t:<5} {n} rows")
+    if result["empty"]:
+        print(f"  WARN: {len(result['empty'])} empty: {', '.join(result['empty'])}")
 
     print("Computing regime...")
     regime = data_sync.compute_regime()

@@ -3,19 +3,22 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# 10 seed stocks for the MVP universe (Tahap 0). yfinance uses the ".JK" suffix.
+# 10 seed stocks used for quick validation (Tahap 0). yfinance uses ".JK".
 SEED_TICKERS = [
-    "BBCA",
-    "BBRI",
-    "BMRI",
-    "BREN",
-    "PANI",
-    "CUAN",
-    "AMMN",
-    "MDKA",
-    "SRTG",
-    "TLKM",
+    "BBCA", "BBRI", "BMRI", "BREN", "PANI",
+    "CUAN", "AMMN", "MDKA", "SRTG", "TLKM",
 ]
+
+# LQ45 — the 45 most liquid IDX names. Static snapshot (IDX rebalances ~biannually);
+# treat as the working universe so breadth/dispersion are statistically meaningful.
+LQ45_TICKERS = [
+    "BBCA", "BBRI", "BMRI", "BBNI", "BRIS", "ARTO", "BREN", "PANI", "CUAN", "AMMN",
+    "MDKA", "SRTG", "TLKM", "ASII", "UNTR", "ADRO", "ADMR", "ANTM", "INCO", "PGAS",
+    "PTBA", "ITMG", "MEDC", "AKRA", "ICBP", "INDF", "UNVR", "KLBF", "CPIN", "MYOR",
+    "GGRM", "SMGR", "INTP", "CTRA", "PWON", "SMRA", "GOTO", "BUKA", "TOWR", "TBIG",
+    "EXCL", "ISAT", "MAPI", "ACES", "AMRT",
+]
+
 
 
 class Settings(BaseSettings):
@@ -24,6 +27,10 @@ class Settings(BaseSettings):
     )
 
     APP_ENV: str = "development"
+    # Working universe: "lq45" (default) or "seed" (the 10 quick-test stocks).
+    UNIVERSE: str = "lq45"
+    # SBN 10Y yield (%) — no clean Yahoo feed, so set manually when it moves.
+    SBN_10Y: float | None = None
     DATABASE_URL: str = "postgresql+psycopg://sahamflow:sahamflow@localhost:5432/sahamflow"
     REDIS_URL: str = "redis://localhost:6379/0"
 
@@ -43,6 +50,11 @@ class Settings(BaseSettings):
         if self.ALLOWED_HOSTS.strip() == "*":
             return ["*"]
         return [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
+
+
+    @property
+    def universe(self) -> list[str]:
+        return SEED_TICKERS if self.UNIVERSE == "seed" else LQ45_TICKERS
 
 
 @lru_cache

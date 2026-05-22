@@ -22,6 +22,10 @@ export const api = {
     get<Record<string, { value: number; change: number; change_pct: number } | null>>(
       "/market/indices"
     ),
+  ihsgHistory: (days = 30) =>
+    get<{ history: { date: string; close: number }[]; support: number | null; resistance: number | null; last: number | null }>(
+      `/market/ihsg-history?days=${days}`
+    ),
   sectorRotation: () =>
     get<{ sector: string; rs_5d_pct: number; constituents: number }[]>("/sectors/rotation"),
   briefToday: () => get<{ brief: string; market_data: Record<string, unknown> }>("/brief/today"),

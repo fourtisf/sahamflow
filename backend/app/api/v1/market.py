@@ -50,3 +50,39 @@ def indices():
         except Exception:
             pass
     return out
+
+
+@router.get("/ihsg-history")
+def ihsg_history(days: int = 30):
+    """Real IHSG (^JKSE) daily close history + support/resistance.
+
+    Support/resistance are the recent swing low/high over the window — concrete
+    levels from data, not hand-typed. Cached 10 min.
+    """
+    import json
+
+    key = f"market:ihsg-history:{days}"
+    r = None
+    try:
+        r = get_redis()
+        cached = r.get(key)
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        r = None
+
+    period = "3mo" if days > 30 else "2mo"
+    hist = yf.fetch_history("^JKSE", period=period)[-days:]
+    closes = [h["close"] for h in hist]
+    payload = {
+        "history": hist,
+        "support": round(min(closes), 2) if closes else None,
+        "resistance": round(max(closes), 2) if closes else None,
+        "last": closes[-1] if closes else None,
+    }
+    if r is not None:
+        try:
+            r.setex(key, _CACHE_TTL, json.dumps(payload))
+        except Exception:
+            pass
+    return payload
