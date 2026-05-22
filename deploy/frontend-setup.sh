@@ -15,6 +15,10 @@ if ! command -v node >/dev/null || [ "$(node -v | cut -dv -f2 | cut -d. -f1)" -l
 fi
 command -v pm2 >/dev/null || npm install -g pm2
 
+# git pull as root leaves files root-owned; restore so the app user can build.
+echo ">> Fixing ownership..."
+chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
+
 echo ">> Building frontend..."
 sudo -u "${APP_USER}" bash -lc "
   cd '${APP_DIR}/frontend'
