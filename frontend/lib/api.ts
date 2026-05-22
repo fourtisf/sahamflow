@@ -18,6 +18,10 @@ export const api = {
   regimeCurrent: () => get<RegimeResponse>("/regime/current"),
   screener: (minScore = -1) => get<ScreenerRow[]>(`/screener?min_score=${minScore}`),
   stockAnalysis: (ticker: string) => get<StockAnalysis>(`/stock/${ticker}/analysis`),
+  indices: () =>
+    get<Record<string, { value: number; change: number; change_pct: number } | null>>(
+      "/market/indices"
+    ),
   sectorRotation: () =>
     get<{ sector: string; rs_5d_pct: number; constituents: number }[]>("/sectors/rotation"),
   briefToday: () => get<{ brief: string; market_data: Record<string, unknown> }>("/brief/today"),

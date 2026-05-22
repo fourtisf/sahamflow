@@ -86,6 +86,29 @@ def fetch_ohlcv_records(ticker: str, period: str = "1mo") -> list[dict]:
     return records
 
 
+def fetch_quote(symbol: str) -> dict | None:
+    """Latest close + change vs previous close for an index/FX symbol.
+
+    symbol is a raw Yahoo symbol (e.g. '^JKSE', 'IDR=X') — no .JK mangling.
+    Returns None if Yahoo has no data. Delayed (~15 min), not real-time tick.
+    """
+    raw = yf.download(
+        symbol, period="5d", interval="1d", auto_adjust=False, progress=False, threads=False
+    )
+    if raw is None or raw.empty:
+        return None
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.get_level_values(0)
+    closes = raw["Close"].dropna()
+    if closes.empty:
+        return None
+    last = float(closes.iloc[-1])
+    prev = float(closes.iloc[-2]) if len(closes) >= 2 else last
+    change = last - prev
+    pct = (change / prev * 100) if prev else 0.0
+    return {"value": round(last, 2), "change": round(change, 2), "change_pct": round(pct, 2)}
+
+
 def fetch_info(ticker: str) -> dict:
     """Fetch metadata (name, sector, market cap) for stocks table seeding."""
     symbol = to_yahoo_symbol(ticker)

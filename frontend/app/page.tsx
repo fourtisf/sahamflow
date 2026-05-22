@@ -16,6 +16,31 @@ const TABS: { v: View; label: string }[] = [
   { v: "journal", label: "Journal" },
 ];
 
+type Quote = { value: number; change: number; change_pct: number } | null;
+
+function IndexCell({ label, q, decimals = 2 }: { label: string; q: Quote; decimals?: number }) {
+  if (!q) {
+    return (
+      <div className="ix">
+        <span className="ix-l">{label}</span>
+        <span className="ix-v mono">—</span>
+        <span className="ix-c fl mono">menunggu data</span>
+      </div>
+    );
+  }
+  const up = q.change >= 0;
+  const sign = up ? "+" : "";
+  return (
+    <div className="ix">
+      <span className="ix-l">{label}</span>
+      <span className="ix-v mono">{q.value.toLocaleString("id-ID", { maximumFractionDigits: decimals })}</span>
+      <span className={`ix-c ${up ? "up" : "dn"} mono`}>
+        {sign}{q.change.toLocaleString("id-ID", { maximumFractionDigits: decimals })} {sign}{q.change_pct}%
+      </span>
+    </div>
+  );
+}
+
 const parseNum = (s: string) => parseInt(String(s).replace(/[^0-9]/g, ""), 10) || 0;
 const fmtID = (n: number) => Math.round(n).toLocaleString("id-ID");
 const fmtJt = (n: number) => (n / 1e6).toFixed(1) + "jt";
@@ -40,6 +65,7 @@ export default function Dashboard() {
   const [regime, setRegime] = useState<RegimeResponse | null>(null);
   const [rows, setRows] = useState<ScreenerRow[]>([]);
   const [live, setLive] = useState(false);
+  const [indices, setIndices] = useState<Record<string, Quote> | null>(null);
 
   const [sel, setSel] = useState("BREN");
   const [modal, setModal] = useState("500.000.000");
@@ -48,12 +74,17 @@ export default function Dashboard() {
 
   useEffect(() => {
     (async () => {
-      const [r, s] = await Promise.all([api.regimeCurrent(), api.screener(-1)]);
+      const [r, s, idx] = await Promise.all([
+        api.regimeCurrent(),
+        api.screener(-1),
+        api.indices(),
+      ]);
       if (r) setRegime(r);
       if (s && s.length) {
         setRows(s);
         setLive(true);
       }
+      if (idx) setIndices(idx);
     })();
   }, []);
 
@@ -144,11 +175,11 @@ export default function Dashboard() {
         {/* INDEX */}
         <div className="pnl sec">
           <div className="idx">
-            <div className="ix"><span className="ix-l">IHSG COMPOSITE</span><span className="ix-v mono">7,428.51</span><span className="ix-c up mono">+52.34 +0.71%</span></div>
-            <div className="ix"><span className="ix-l">LQ45</span><span className="ix-v mono">912.34</span><span className="ix-c up mono">+6.18 +0.68%</span></div>
-            <div className="ix"><span className="ix-l">USD/IDR</span><span className="ix-v mono">15,842</span><span className="ix-c dn mono">-28 -0.18%</span></div>
-            <div className="ix"><span className="ix-l">SBN 10Y</span><span className="ix-v mono">6.78%</span><span className="ix-c fl mono">+0 BPS</span></div>
-            <div className="ix"><span className="ix-l">BI RATE</span><span className="ix-v mono">6.00%</span><span className="ix-c fl mono">HOLD</span></div>
+            <IndexCell label="IHSG COMPOSITE" q={indices?.ihsg ?? null} />
+            <IndexCell label="LQ45" q={indices?.lq45 ?? null} />
+            <IndexCell label="USD/IDR" q={indices?.usdidr ?? null} decimals={0} />
+            <div className="ix"><span className="ix-l">SBN 10Y</span><span className="ix-v mono">6.78%</span><span className="ix-c fl mono">MANUAL</span></div>
+            <div className="ix"><span className="ix-l">BI RATE</span><span className="ix-v mono">6.00%</span><span className="ix-c fl mono">MANUAL</span></div>
             <div className="ix"><span className="ix-l">FOREIGN NET</span><span className="ix-v up mono">{regime?.foreign_flow_5d != null ? `${(regime.foreign_flow_5d / 1e9).toFixed(0)}B` : "n/a"}</span><span className="ix-c gd mono">5D</span></div>
           </div>
         </div>
