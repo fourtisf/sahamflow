@@ -1,0 +1,18 @@
+[Unit]
+Description=Sahamflow Scheduler (APScheduler cron jobs)
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=sahamflow
+Group=sahamflow
+WorkingDirectory=/opt/sahamflow/backend
+Environment=ENABLE_SCHEDULER=1
+EnvironmentFile=/opt/sahamflow/backend/.env
+ExecStart=/opt/sahamflow/backend/.venv/bin/python -m app.scheduler_main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
