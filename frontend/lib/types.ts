@@ -77,6 +77,21 @@ export interface StockIntel {
     profit_factor: number;
   } | null;
   history: { date: string; close: number }[];
+  alternate_setup: {
+    bias: "long" | "short";
+    rationale: string;
+    reversal_score: number;
+    signatures: string[];
+    levels: {
+      entry: number;
+      stop_loss: number;
+      take_profit: number;
+      risk_pct: number;
+      reward_pct: number;
+      rr_ratio: number;
+    } | null;
+    rules: string[];
+  } | null;
 }
 
 export interface PortfolioRisk {

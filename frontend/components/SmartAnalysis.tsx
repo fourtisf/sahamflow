@@ -192,6 +192,47 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
           </>
         )}
 
+        {/* Alternate setup overlay — smart money flip at bottoms */}
+        {intel.alternate_setup && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 12,
+              border: "1px solid var(--grn)",
+              borderRadius: 8,
+              background: "rgba(34,224,122,0.06)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--grn)", letterSpacing: "0.04em" }}>
+                ⚠ ALTERNATE SETUP — REVERSAL LONG (override Sell)
+              </span>
+              <span className="mono" style={{ fontSize: 12, color: "var(--grn)" }}>
+                reversal score {intel.alternate_setup.reversal_score}/100
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--tx2)", marginBottom: 8 }}>
+              {intel.alternate_setup.rationale}
+            </div>
+            {intel.alternate_setup.signatures.length > 0 && (
+              <div style={{ fontSize: 11, color: "var(--tx3)", marginBottom: 10 }}>
+                <b style={{ color: "var(--gold)" }}>Signature:</b> {intel.alternate_setup.signatures.join(" · ")}
+              </div>
+            )}
+            {intel.alternate_setup.levels && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: "var(--line)", marginBottom: 10 }}>
+                <div className="rgc"><div className="rg-l">Entry (last)</div><div className="rg-v mono">{fmt(intel.alternate_setup.levels.entry)}</div></div>
+                <div className="rgc"><div className="rg-l">Stop Loss</div><div className="rg-v mono dn">{fmt(intel.alternate_setup.levels.stop_loss)}</div><div className="rg-m">−{fmt(intel.alternate_setup.levels.risk_pct)}%</div></div>
+                <div className="rgc"><div className="rg-l">Take Profit</div><div className="rg-v mono up">{fmt(intel.alternate_setup.levels.take_profit)}</div><div className="rg-m">+{fmt(intel.alternate_setup.levels.reward_pct)}%</div></div>
+                <div className="rgc"><div className="rg-l">R:R</div><div className="rg-v mono gd">1 : {intel.alternate_setup.levels.rr_ratio}</div></div>
+              </div>
+            )}
+            <ul style={{ paddingLeft: 18, color: "var(--tx2)", fontSize: 11, lineHeight: 1.7, margin: 0 }}>
+              {intel.alternate_setup.rules.map((rule, i) => <li key={i}>{rule}</li>)}
+            </ul>
+          </div>
+        )}
+
         {/* Regime conviction note */}
         {r.note && (
           <div className="alrt alrt-i" style={{ marginTop: 12 }}>

@@ -11,7 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import RegimeHistory
-from app.services import bandar_detector, foreign_flow_analyzer, technical_analysis, track_record, triggers
+from app.services import (
+    bandar_detector,
+    foreign_flow_analyzer,
+    reversal_scanner,
+    technical_analysis,
+    track_record,
+    triggers,
+)
 from app.services.data_sync import load_ohlcv_df
 
 
@@ -118,4 +125,54 @@ def build_intel(db: Session, ticker: str) -> dict | None:
     # Track record of THIS setup historically (walk-forward, cached daily).
     track = track_record.cached_track_record(db, ticker)
     intel["track_record"] = track_record.match_current_setup(track, label, bandar.get("phase"))
+
+    # === SMART-MONEY REVERSAL OVERLAY ===
+    # Trend-following composite akan bilang "Sell" untuk saham oversold di bear
+    # trend. Tapi saat regime modifier mendukung pembalikan DAN ada signature
+    # reversal kuat, smart money justru AKUMULASI. Kami buat alternate setup
+    # eksplisit supaya user tidak dipaksa Sell di bottom.
+    intel["alternate_setup"] = _maybe_reversal_overlay(df, intel, breakdown, db, ticker)
     return intel
+
+
+def _maybe_reversal_overlay(df, intel, breakdown, db, ticker):
+    """Jika kondisi mendukung Buy reversal, kembalikan overlay setup; else None."""
+    # Cek regime: harus dalam fase yang mendukung bottom-fishing
+    regime_row = db.execute(
+        select(RegimeHistory).order_by(RegimeHistory.date.desc()).limit(1)
+    ).scalar_one_or_none()
+    regime_extra = regime_row.extra if regime_row else {}
+    modifier = (regime_extra or {}).get("modifier") if isinstance(regime_extra, dict) else None
+    if modifier not in {"Potential Accumulation"}:
+        return None
+
+    # Saham harus oversold (bukan sembarang)
+    rsi = breakdown.get("rsi14") or 50
+    if rsi >= 35:
+        return None
+
+    # Cek reversal signature score
+    rev = reversal_scanner.scan_ticker(df)
+    if not rev or rev["score"] < 40:
+        return None
+
+    # Bangun setup long pakai ATR (sama formula seperti levels normal)
+    last = float(df["close"].iloc[-1])
+    atr = breakdown.get("atr14") or 0
+    if atr <= 0:
+        return None
+    levels = technical_analysis.execution_levels(last, atr, bias="long")
+
+    return {
+        "bias": "long",
+        "rationale": "REVERSAL LONG — regime Potential Accumulation + oversold + signature pembalikan.",
+        "reversal_score": rev["score"],
+        "signatures": rev["signatures"],
+        "levels": levels,
+        "rules": [
+            "Konfirmasi: tunggu close > entry breakout dengan volume ≥ 1.5× rata-rata.",
+            f"Invalidation: setup batal jika close < {levels['stop_loss']} (2× ATR).",
+            "Setup ini override sinyal trend-following composite — jangan ambil Sell.",
+            "Scaling: 1/3 saat trigger, 1/3 saat RSI menembus 40 (momentum kembali), 1/3 di +1R.",
+        ],
+    }
