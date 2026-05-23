@@ -414,20 +414,12 @@ def build_gap_radar_text() -> str:
             trend = " · DOWNTREND ⚠️"
         else:
             trend = " · sideways"
-        # Foreign flow
-        fn = n.get("foreign_net_5d")
-        if fn is None or fn == 0:
-            ff_str = ""
-        elif fn > 0:
-            ff_str = f" · FF 5D +{fn/1e9:.1f}B 🟢"
-        else:
-            ff_str = f" · FF 5D {fn/1e9:.1f}B 🔴"
         sector = n.get("sector", "")
         sector_str = f" [{sector[:10]}]" if sector and sector != "Unknown" else ""
 
         out = [
             f"  {emoji} `{n['ticker']:<5}` gap {n['gap_pct']:+.2f}%  day {day_e}{day:+.2f}%  close `{n['close']:,.0f}`",
-            f"     {vol_str}{trend}{ff_str}{sector_str}",
+            f"     {vol_str}{trend}{sector_str}",
         ]
         plan = _entry_plan(n)
         if plan:
@@ -485,7 +477,8 @@ def build_gap_radar_text() -> str:
         )
 
     lines.append("")
-    lines.append("_Bukan rekomendasi. Cross-check volume + struktur chart sebelum entry._")
+    lines.append("_⚡ Cross-check sebelum entry: (1) volume real-time, (2) foreign flow di RTI/Stockbit, (3) struktur chart._")
+    lines.append("_Bukan rekomendasi investasi._")
     return "\n".join(lines)
 
 

@@ -19,11 +19,11 @@ _scheduler: BackgroundScheduler | None = None
 
 def _sync_eod():
     data_sync.sync_ohlcv()
-    # Best-effort foreign flow scrape right after OHLCV.
-    try:
-        data_sync.sync_foreign_flow()
-    except Exception as e:
-        log.warning("Foreign flow sync failed: %s", e)
+    # NOTE: foreign flow scraper di-disable karena IDX block VPS IP (403 Cloudflare).
+    # Untuk cek foreign flow, pakai RTI Business / Stockbit secara manual.
+    # Kalau pakai residential proxy nanti, re-enable via:
+    #   try: data_sync.sync_foreign_flow()
+    #   except Exception as e: log.warning("FF sync: %s", e)
 
 
 def _invalidation_check():
