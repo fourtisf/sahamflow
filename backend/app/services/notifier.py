@@ -298,16 +298,23 @@ def _build_ticket(intel: dict, qual: dict) -> str:
         f"  Bias    : {intel.get('action', 'BUY')}  ·  Regime-aligned: {'✅' if regime.get('regime_aligned') else '⚠️ counter-trend'}",
     ]
 
-    # Gap context (informational, not a blocker)
+    # Gap context (informational, not a blocker) — saham + IHSG context
     gap = intel.get("gap")
-    if gap and gap.get("severity") != "normal":
-        emoji = "📈" if gap["direction"] == "up" else "📉"
-        lines += [
-            "",
-            "*━━ GAP CHECK ━━*",
-            f"  {emoji} Open {gap['open']:,.0f} vs prev close {gap['prev_close']:,.0f}",
-            f"  _{gap['interpretation']}_",
-        ]
+    ihsg_gap = intel.get("ihsg_gap")
+    gap_combined = intel.get("gap_combined")
+    show_gap = (gap and gap.get("severity") != "normal") or (ihsg_gap and ihsg_gap.get("severity") != "normal")
+    if show_gap:
+        lines += ["", "*━━ GAP CHECK ━━*"]
+        if gap:
+            emoji_s = "📈" if gap["direction"] == "up" else "📉" if gap["direction"] == "down" else "➖"
+            lines.append(f"  {emoji_s} Saham  : {gap['gap_pct']:+.2f}%  (open {gap['open']:,.0f} vs prev {gap['prev_close']:,.0f})")
+        if ihsg_gap:
+            emoji_i = "📈" if ihsg_gap["direction"] == "up" else "📉" if ihsg_gap["direction"] == "down" else "➖"
+            lines.append(f"  {emoji_i} IHSG   : {ihsg_gap['gap_pct']:+.2f}%  ({ihsg_gap['severity']})")
+        if gap_combined:
+            lines.append(f"  _{gap_combined}_")
+        elif gap and gap.get("interpretation"):
+            lines.append(f"  _{gap['interpretation']}_")
 
     lines += ["", "*━━ CONFLUENCE ━━*"]
     for b in _confluence_bullets(intel, qual):
@@ -444,6 +451,13 @@ def alert_strong_setups(max_per_run: int = 5, min_score_override: float | None =
 
         watchlist = settings.watchlist_set
         candidates = [r for r in rows if (r.composite_score or 0) >= threshold]
+        # IHSG gap diambil sekali per run (di-share ke semua ticker)
+        ihsg_gap = None
+        try:
+            from app.services import gap_detector
+            ihsg_gap = gap_detector.compute_ihsg_gap()
+        except Exception as e:
+            log.debug("IHSG gap fetch failed: %s", e)
         # Watchlist filter: kalau di-set, hanya ticker di list yang lolos
         if watchlist:
             before = len(candidates)
@@ -464,6 +478,10 @@ def alert_strong_setups(max_per_run: int = 5, min_score_override: float | None =
             try:
                 from app.services import gap_detector
                 intel["gap"] = gap_detector.compute_overnight_gap(db, r.ticker)
+                intel["ihsg_gap"] = ihsg_gap
+                intel["gap_combined"] = gap_detector.combined_interpretation(
+                    intel["gap"], ihsg_gap
+                )
             except Exception as e:
                 log.debug("Gap calc %s failed: %s", r.ticker, e)
             qual = signal_qualifier.qualify(intel, account_size_idr=settings.ACCOUNT_SIZE_IDR)
