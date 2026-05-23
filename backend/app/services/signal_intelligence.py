@@ -144,6 +144,7 @@ def build_intel(db: Session, ticker: str) -> dict | None:
 
     # Wait conditions: kalau AVOID, kasih syarat balik bullish (bukan setup short)
     wait_conditions: list[str] | None = None
+    avoid_reasons: list[str] | None = None
     if bias == "avoid":
         sw_high = breakdown.get("swing_high_60d")
         ma20 = breakdown.get("ma20")
@@ -153,6 +154,30 @@ def build_intel(db: Session, ticker: str) -> dict | None:
             f"Tunggu break swing high {sw_high} dengan volume ≥ 1.5×." if sw_high else "Tunggu breakout dengan volume thrust.",
             "Kalau sudah hold: pertimbangkan EXIT di rebound minor ke MA20 / swing high.",
         ]
+
+        # Alasan SPESIFIK kenapa AVOID — tampilkan drivers dari indikator.
+        avoid_reasons = []
+        rsi = breakdown.get("rsi14")
+        if rsi is not None:
+            if rsi < 40:
+                avoid_reasons.append(f"RSI 14 = {rsi} (oversold tapi belum signature reversal — tunggu RSI > 45)")
+            else:
+                avoid_reasons.append(f"RSI 14 = {rsi} (di bawah 50, momentum lemah)")
+        if breakdown.get("macd_bias") == "bearish":
+            avoid_reasons.append(f"MACD bearish (hist {breakdown.get('macd_hist')})")
+        ma200_d = breakdown.get("ma200_distance_pct")
+        if ma200_d is not None and ma200_d < 0:
+            avoid_reasons.append(f"Harga {ma200_d}% vs MA200 — di bawah tren panjang")
+        vol = breakdown.get("volume_ratio_20d")
+        if vol is not None and vol < 1.0:
+            avoid_reasons.append(f"Volume {vol}× rata-rata 20D — kering, tidak ada minat beli")
+        if bandar.get("phase") == "Markdown":
+            avoid_reasons.append(f"Bandar fase Markdown (score {bandar.get('score')}) — smart money distribusi")
+        rp = breakdown.get("range_position_pct")
+        if rp is not None:
+            avoid_reasons.append(f"Posisi {rp}% range 60D (low {breakdown.get('swing_low_60d')}, high {breakdown.get('swing_high_60d')})")
+        if not conviction.get("regime_aligned"):
+            avoid_reasons.append(f"Melawan regime {regime_name} — counter-trend, conviction model rendah")
 
     intel = {
         "ticker": ticker,
@@ -167,6 +192,7 @@ def build_intel(db: Session, ticker: str) -> dict | None:
         "foreign_flow": ff,
         "levels": levels,
         "wait_conditions": wait_conditions,
+        "avoid_reasons": avoid_reasons,
         "regime": {"name": regime_name, **conviction},
         "history": history,
     }

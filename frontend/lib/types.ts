@@ -35,6 +35,7 @@ export interface StockIntel {
   bias: "long" | "avoid" | "neutral" | string;
   market_mode: string;
   wait_conditions: string[] | null;
+  avoid_reasons: string[] | null;
   indicators: {
     rsi14: number;
     macd_hist: number;

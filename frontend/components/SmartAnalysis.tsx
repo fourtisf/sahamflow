@@ -95,14 +95,31 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--red)", letterSpacing: "0.04em", marginBottom: 8 }}>
             ⛔ AVOID — jangan buka posisi long baru di {ticker}
           </div>
-          <div style={{ fontSize: 11, color: "var(--tx2)", marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: "var(--tx2)", marginBottom: 10 }}>
             IDX retail tidak ada short. Skor negatif = bukan setup short, melainkan sinyal untuk <b>tidak beli sekarang</b>
-            atau <b>exit kalau sudah hold</b>. Tunggu konfirmasi pembalikan di bawah ini.
+            atau <b>exit kalau sudah hold</b>. <b>Bukan berarti saham buruk</b> — model menunggu bukti pembalikan.
           </div>
+
+          {intel.avoid_reasons && intel.avoid_reasons.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, color: "var(--tx3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, marginTop: 4 }}>
+                KENAPA AVOID — driver dari data:
+              </div>
+              <ul style={{ paddingLeft: 18, color: "var(--tx2)", fontSize: 11, lineHeight: 1.7, margin: "0 0 10px 0" }}>
+                {intel.avoid_reasons.map((reason, idx) => <li key={idx}>{reason}</li>)}
+              </ul>
+            </>
+          )}
+
           {intel.wait_conditions && (
-            <ul style={{ paddingLeft: 18, color: "var(--tx2)", fontSize: 11, lineHeight: 1.7, margin: 0 }}>
-              {intel.wait_conditions.map((w, idx) => <li key={idx}>{w}</li>)}
-            </ul>
+            <>
+              <div style={{ fontSize: 10, color: "var(--tx3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                YANG HARUS TUNGGU untuk flip BUY:
+              </div>
+              <ul style={{ paddingLeft: 18, color: "var(--tx2)", fontSize: 11, lineHeight: 1.7, margin: 0 }}>
+                {intel.wait_conditions.map((w, idx) => <li key={idx}>{w}</li>)}
+              </ul>
+            </>
           )}
         </div>
       )}
