@@ -390,41 +390,32 @@ def build_gap_radar_text() -> str:
         return "\n".join(lines)
 
     def _row(n: dict, emoji: str) -> list[str]:
+        """Compact 1-2 line per ticker — Telegram has 4096 char limit."""
         day = n.get("day_change_pct", 0)
         day_e = "🟢" if day > 0 else "🔴" if day < 0 else "⚪"
-        # Volume confirmation
         vr = n.get("volume_ratio_20d")
-        if vr is None:
-            vol_str = "vol —"
-        elif vr >= 2.0:
-            vol_str = f"vol *{vr:.1f}×*🔥"
-        elif vr >= 1.5:
-            vol_str = f"vol *{vr:.1f}×*"
-        elif vr < 0.7:
-            vol_str = f"vol {vr:.1f}×⚠️ kering"
-        else:
-            vol_str = f"vol {vr:.1f}×"
-        # Trend context (MA200)
+        vol_tag = ""
+        if vr is not None:
+            if vr >= 2.0:
+                vol_tag = f" v{vr:.1f}×🔥"
+            elif vr >= 1.5:
+                vol_tag = f" v{vr:.1f}×"
+            elif vr < 0.7:
+                vol_tag = f" v{vr:.1f}×⚠️"
+            else:
+                vol_tag = f" v{vr:.1f}×"
         mad = n.get("ma200_distance_pct")
-        if mad is None:
-            trend = ""
-        elif mad > 5:
-            trend = " · UPTREND ✅"
-        elif mad < -5:
-            trend = " · DOWNTREND ⚠️"
-        else:
-            trend = " · sideways"
+        trend_tag = ""
+        if mad is not None:
+            if mad > 5:
+                trend_tag = " ↑"
+            elif mad < -5:
+                trend_tag = " ↓"
         sector = n.get("sector", "")
-        sector_str = f" [{sector[:10]}]" if sector and sector != "Unknown" else ""
-
-        out = [
-            f"  {emoji} `{n['ticker']:<5}` gap {n['gap_pct']:+.2f}%  day {day_e}{day:+.2f}%  close `{n['close']:,.0f}`",
-            f"     {vol_str}{trend}{sector_str}",
+        sector_str = f" [{sector[:4]}]" if sector and sector != "Unknown" else ""
+        return [
+            f"  {emoji} `{n['ticker']:<5}` g{n['gap_pct']:+.1f}% d{day_e}{day:+.1f}% c`{n['close']:,.0f}`{vol_tag}{trend_tag}{sector_str}"
         ]
-        plan = _entry_plan(n)
-        if plan:
-            out.append(f"     ↳ {plan}")
-        return out
 
     order = ["GAP_FILL_BULL", "GAP_AND_GO", "GAP_UP_FAIL", "GAP_DN_CONT"]
     for pat in order:
@@ -449,8 +440,10 @@ def build_gap_radar_text() -> str:
         cluster = ", ".join(f"{s}×{c}" for s, c in top_sec[:3] if c >= 2)
         if cluster:
             lines.append(f"_Sector cluster: {cluster} → ada rotation_")
-        for n in group[:10]:
+        for n in group[:8]:
             lines.extend(_row(n, meta["row_emoji"]))
+        if len(group) > 8:
+            lines.append(f"  _…{len(group) - 8} lainnya — lihat web /gap_")
         lines.append("")
 
     lines.append("*━━ SMART MONEY NOTES ━━*")
@@ -487,6 +480,10 @@ def refresh_gap_radar_pinned() -> bool:
     from app.services import notifier
 
     text = build_gap_radar_text()
+    # Telegram hard limit 4096 chars per message; truncate with notice
+    if len(text) > 4000:
+        log.warning("Gap radar text %d chars, truncating to fit Telegram limit", len(text))
+        text = text[:3900] + "\n\n_…dipotong, lihat lengkap di web /gap_"
     state = notifier._load_state()
     msg_id = state.get("pinned_gap_msg_id")
 
