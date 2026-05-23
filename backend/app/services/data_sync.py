@@ -181,12 +181,20 @@ def generate_signals(tickers: list[str] | None = None, on: date | None = None) -
             )
             bandar = bandar_detector.detect(df, foreign_5d)
             ff = foreign_flow_analyzer.analyze(list(df["foreign_net"]))
+            breakdown_for_smp = technical_analysis.indicator_breakdown(df)
+            from app.services import smart_money_proxy
+            smp = smart_money_proxy.score_ticker(df, breakdown_for_smp, bandar)
 
             stmt = insert(SignalCache).values(
                 ticker=t,
                 date=on,
                 composite_score=round(score, 3),
-                indicators={**indicators, "signal_label": technical_analysis.signal_label(score)},
+                indicators={
+                    **indicators,
+                    "signal_label": technical_analysis.signal_label(score),
+                    "smart_money_score": smp["score"],
+                    "smart_money_label": smp["label"],
+                },
                 foreign_signal=ff.get("signal") if ff.get("has_data") else None,
                 bandar_phase=bandar["phase"],
                 bandar_score=bandar["score"],

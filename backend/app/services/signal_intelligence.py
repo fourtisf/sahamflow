@@ -17,6 +17,7 @@ from app.services import (
     foreign_flow_analyzer,
     fundamentals,
     reversal_scanner,
+    smart_money_proxy,
     technical_analysis,
     track_record,
     triggers,
@@ -124,6 +125,7 @@ def build_intel(db: Session, ticker: str) -> dict | None:
     )
     bandar = bandar_detector.detect(df, foreign_5d)
     ff = foreign_flow_analyzer.analyze(list(df["foreign_net"]))
+    smp = smart_money_proxy.score_ticker(df, breakdown, bandar)
 
     last_close = float(df["close"].iloc[-1])
 
@@ -215,6 +217,7 @@ def build_intel(db: Session, ticker: str) -> dict | None:
         "indicators": breakdown,
         "bandar": bandar,
         "foreign_flow": ff,
+        "smart_money_proxy": smp,
         "levels": levels,
         "wait_conditions": wait_conditions,
         "avoid_reasons": avoid_reasons,

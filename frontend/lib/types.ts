@@ -51,6 +51,7 @@ export interface StockIntel {
   };
   bandar: { phase: string; score: number; vol_ratio?: number; estimated: boolean };
   foreign_flow: { has_data: boolean; signal?: string; net_window?: number; consistency?: number };
+  smart_money_proxy: { score: number; label: string; drivers: string[] };
   levels: {
     entry: number;
     stop_loss: number;

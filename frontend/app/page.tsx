@@ -207,7 +207,7 @@ export default function Dashboard() {
             <IndexCell label="USD/IDR" q={indices?.usdidr ?? null} decimals={0} />
             <div className="ix"><span className="ix-l">SBN 10Y</span><span className="ix-v mono">6.78%</span><span className="ix-c fl mono">MANUAL</span></div>
             <div className="ix"><span className="ix-l">BI RATE</span><span className="ix-v mono">6.00%</span><span className="ix-c fl mono">MANUAL</span></div>
-            <div className="ix"><span className="ix-l">FOREIGN NET</span><span className="ix-v up mono">{regime?.foreign_flow_5d != null ? `${(regime.foreign_flow_5d / 1e9).toFixed(0)}B` : "n/a"}</span><span className="ix-c gd mono">5D</span></div>
+            <div className="ix"><span className="ix-l">SMART MONEY</span><span className="ix-v gd mono">PROXY</span><span className="ix-c fl mono">per saham</span></div>
           </div>
         </div>
 
@@ -233,7 +233,7 @@ export default function Dashboard() {
           </div>
           <div className="drv">
             <div className="dc"><div className="dc-l">A/D Ratio</div><div className="dc-v up mono">{regime?.breadth_ratio != null ? `${regime.breadth_ratio}×` : "—"}</div><div className="dc-m">Advance/decline</div></div>
-            <div className="dc"><div className="dc-l">Foreign 5D</div><div className="dc-v up mono">{regime?.foreign_flow_5d != null ? `${(regime.foreign_flow_5d / 1e9).toFixed(0)}B` : "n/a"}</div><div className="dc-m">Butuh data IDX</div></div>
+            <div className="dc"><div className="dc-l">Smart Money</div><div className="dc-v gd mono">PROXY</div><div className="dc-m">Per saham di Smart Analysis</div></div>
             <div className="dc"><div className="dc-l">vs MA200</div><div className="dc-v up mono">{regime?.factors?.ma200 != null ? regime.factors.ma200 : "—"}</div><div className="dc-m">Posisi tren</div></div>
             <div className="dc"><div className="dc-l">Raw Score</div><div className="dc-v mono">{regime?.raw_score ?? "—"}</div><div className="dc-m">-1 .. +1</div></div>
           </div>
@@ -385,7 +385,7 @@ GET /api/v1/backtest?ticker=BBCA&min_score=0.3
             <div className="pnl-h"><span className="pnl-t">Signal Watchlist</span><span className="pnl-n">Composite · {watch.length} Stocks</span><div className="pnl-r gd">{clock} WIB</div></div>
             <div style={{ overflowX: "auto" }}>
               <table className="dt">
-                <thead><tr><th className="n">#</th><th>Sym</th><th className="r">Last</th><th className="r">Score</th><th className="r">Bndr</th><th>Phase</th><th className="r">Frgn</th><th className="r">Qlty</th><th>Signal</th></tr></thead>
+                <thead><tr><th className="n">#</th><th>Sym</th><th className="r">Last</th><th className="r">Score</th><th className="r">Bndr</th><th>Phase</th><th className="r">SmartMoney</th><th className="r">Qlty</th><th>Signal</th></tr></thead>
                 <tbody>
                   {watch.map((w, i) => (
                     <tr key={w.ticker} onClick={() => selectStock(w.ticker)}>
@@ -395,7 +395,7 @@ GET /api/v1/backtest?ticker=BBCA&min_score=0.3
                       <td className={`r mono ${(w.live?.composite_score ?? 0) >= 0 ? "up" : "dn"}`}>{w.live?.composite_score ?? "—"}</td>
                       <td className={`r ${scoreClass(w.live?.bandar_score)} mono`}>{w.live?.bandar_score ?? "—"}</td>
                       <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`}>{w.live?.bandar_phase || "—"}</span></td>
-                      <td className="r mono fl">{w.live?.foreign_signal || "n/a"}</td>
+                      <td className={`r mono ${((w.live?.indicators as any)?.smart_money_score ?? 0) >= 20 ? "up" : ((w.live?.indicators as any)?.smart_money_score ?? 0) <= -20 ? "dn" : "fl"}`}>{(w.live?.indicators as any)?.smart_money_score ?? "—"}</td>
                       <td className="r mono">{w.meta.qlty}</td>
                       <td><span className={`sg ${(w.live?.composite_score ?? 0) >= 0.2 ? "sg-b" : (w.live?.composite_score ?? 0) <= -0.2 ? "sg-s" : "sg-h"}`}>{w.live?.signal || "—"}</span></td>
                     </tr>

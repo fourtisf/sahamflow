@@ -89,6 +89,28 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
         <Stat label="Bandar" value={intel.bandar.phase} hint={`vol× ${fmt(intel.bandar.vol_ratio ?? null, 2)} · estimasi`} />
       </div>
 
+      {/* Smart Money Proxy — pengganti foreign flow (gratis tidak bisa diakses) */}
+      {intel.smart_money_proxy && (
+        <div className="pnl-b" style={{ borderTop: "1px solid var(--line)", padding: "10px 12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontSize: 10, color: "var(--tx3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              SMART MONEY PROXY · score {intel.smart_money_proxy.score}/100
+              <span style={{ marginLeft: 8, color: "var(--tx4)", textTransform: "none", fontSize: 9.5 }}>
+                heuristik (bandar+volume+range) — bukan foreign flow nyata
+              </span>
+            </span>
+            <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: intel.smart_money_proxy.score >= 20 ? "var(--grn)" : intel.smart_money_proxy.score <= -20 ? "var(--red)" : "var(--amb)" }}>
+              {intel.smart_money_proxy.label}
+            </span>
+          </div>
+          {intel.smart_money_proxy.drivers.length > 0 && (
+            <ul style={{ paddingLeft: 18, color: "var(--tx2)", fontSize: 10.5, lineHeight: 1.55, margin: 0 }}>
+              {intel.smart_money_proxy.drivers.map((d, i) => <li key={i}>{d}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+
       {/* Quality tier + mode badge — bluechip exception + dynamic composite */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderTop: "1px solid var(--line)", background: "var(--bg2)", fontSize: 10.5, color: "var(--tx2)" }}>
         {intel.quality && intel.quality.tier !== "UNKNOWN" && (
