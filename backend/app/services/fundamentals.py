@@ -107,15 +107,16 @@ def compute_quality_score(info: dict[str, Any]) -> tuple[int, dict]:
     return score, drivers
 
 
-def get_quality(ticker: str) -> dict:
+def get_quality(ticker: str, force_refresh: bool = False) -> dict:
     """Cached quality assessment for a ticker."""
     key = f"quality:{ticker.upper()}"
     r = None
     try:
         r = get_redis()
-        cached = r.get(key)
-        if cached:
-            return json.loads(cached)
+        if not force_refresh:
+            cached = r.get(key)
+            if cached:
+                return json.loads(cached)
     except Exception:
         r = None
 
@@ -136,6 +137,37 @@ def get_quality(ticker: str) -> dict:
         except Exception:
             pass
     return payload
+
+
+def bulk_refresh(tickers: list[str] | None = None) -> dict:
+    """Force-refresh quality cache untuk semua ticker di universe (atau tickers param).
+
+    Useful kalau yfinance cache stale atau initial population. Return summary:
+      {fetched, with_data, with_score_gt0, by_tier}
+    """
+    from app.core.config import settings
+
+    if tickers is None:
+        tickers = settings.universe
+    summary = {
+        "fetched": 0,
+        "with_data": 0,
+        "with_score_gt0": 0,
+        "by_tier": {"BLUE CHIP": 0, "STANDARD": 0, "JUNK / SPECULATIVE": 0, "UNKNOWN": 0},
+        "no_data_tickers": [],
+    }
+    for t in tickers:
+        summary["fetched"] += 1
+        q = get_quality(t, force_refresh=True)
+        tier = q.get("tier", "UNKNOWN")
+        summary["by_tier"][tier] = summary["by_tier"].get(tier, 0) + 1
+        if q.get("source") == "unavailable":
+            summary["no_data_tickers"].append(t)
+            continue
+        summary["with_data"] += 1
+        if q.get("score", 0) and q["score"] > 0:
+            summary["with_score_gt0"] += 1
+    return summary
 
 
 def avoid_threshold_for(quality_score: int | None) -> float:

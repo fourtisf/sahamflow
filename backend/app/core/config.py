@@ -19,6 +19,46 @@ LQ45_TICKERS = [
     "EXCL", "ISAT", "MAPI", "ACES", "AMRT",
 ]
 
+# KOMPAS100 — broader smart-money universe (100 saham paling likuid Indonesia).
+# Snapshot manual; IDX rebalance ~biannual. Banyak overlap dengan LQ45.
+KOMPAS100_TICKERS = [
+    # Banking & Finance
+    "BBCA", "BBRI", "BMRI", "BBNI", "BRIS", "ARTO", "BTPS", "BANK", "BFIN", "BNGA",
+    "BNII", "BJBR", "BJTM", "MEGA", "NISP",
+    # Energy (coal, oil & gas)
+    "ADRO", "ADMR", "ITMG", "PTBA", "MEDC", "AKRA", "PGAS", "HRUM", "INDY", "BUMI",
+    "ENRG", "ELSA",
+    # Materials & Mining
+    "ANTM", "INCO", "MDKA", "AMMN", "BREN", "TINS", "PSAB", "DKFT", "BRPT", "TPIA",
+    # Industrials & Cement
+    "ASII", "UNTR", "SMGR", "INTP", "JSMR", "WIKA", "WSKT", "PTPP", "ADHI", "WTON",
+    # Consumer Non-Cyclicals
+    "ICBP", "INDF", "UNVR", "CPIN", "MYOR", "GGRM", "HMSP", "AMRT", "JPFA", "ROTI",
+    "MAIN", "MLBI", "SIDO", "TBLA",
+    # Consumer Cyclicals & Retail
+    "MAPI", "ACES", "ERAA", "RALS", "MAPA", "LPPF", "PZZA", "ULTJ",
+    # Healthcare
+    "KLBF", "KAEF", "INAF", "PYFA", "MIKA", "HEAL",
+    # Property & Real Estate
+    "CTRA", "PWON", "SMRA", "BSDE", "ASRI", "APLN", "LPKR", "BEST", "DUTI",
+    # Technology
+    "GOTO", "BUKA", "EMTK", "DCII", "MTDL",
+    # Telecom / Communication
+    "TLKM", "ISAT", "EXCL", "TOWR", "TBIG", "FREN",
+    # Utilities & Infrastructure
+    "PGEO", "POWR",
+    # Investment / Holding
+    "SRTG", "PANI", "CUAN",
+    # Transportation
+    "GIAA", "SMDR", "TMAS", "WEHA",
+]
+
+# COMBINED universe = LQ45 ∪ KOMPAS100 (deduped). ~110 unique tickers.
+def _combined_universe() -> list[str]:
+    return sorted({*LQ45_TICKERS, *KOMPAS100_TICKERS})
+
+COMBINED_TICKERS = _combined_universe()
+
 
 
 class Settings(BaseSettings):
@@ -74,7 +114,14 @@ class Settings(BaseSettings):
 
     @property
     def universe(self) -> list[str]:
-        return SEED_TICKERS if self.UNIVERSE == "seed" else LQ45_TICKERS
+        u = (self.UNIVERSE or "lq45").lower()
+        if u == "seed":
+            return SEED_TICKERS
+        if u == "kompas100":
+            return KOMPAS100_TICKERS
+        if u == "combined":
+            return COMBINED_TICKERS
+        return LQ45_TICKERS
 
 
 @lru_cache
