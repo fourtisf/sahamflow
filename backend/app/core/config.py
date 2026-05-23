@@ -53,6 +53,24 @@ class Settings(BaseSettings):
     NARRATIVE_TOP_N: int = 50
     NARRATIVE_CACHE_TTL: int = 86400  # 1 day in seconds
 
+    # === Smart filter / hedge fund discipline ===
+    # Minimum R:R untuk lolos alert. < 1:2 = setup tidak layak risk.
+    MIN_RR_RATIO: float = 2.0
+    # Hari cooldown per ticker — hindari spam signal sama berturut-turut.
+    COOLDOWN_DAYS: int = 3
+    # Watchlist optional: comma-separated ticker (mis. "BBRI,ANTM,TLKM"). Kalau
+    # diisi, hanya ticker di list yang akan kirim alert. Kosong = semua qualified.
+    WATCHLIST_TICKERS: str = ""
+    # Path ke file earnings calendar JSON. Format:
+    # {"BBRI": {"earnings_date": "2026-05-28"}, ...}
+    # Bot skip alert jika today dalam window ±EARNINGS_BLOCK_DAYS.
+    EARNINGS_CALENDAR_PATH: str = ""
+    EARNINGS_BLOCK_DAYS: int = 2
+
+    @property
+    def watchlist_set(self) -> set[str]:
+        return {t.strip().upper() for t in self.WATCHLIST_TICKERS.split(",") if t.strip()}
+
     @property
     def allowed_origins(self) -> list[str]:
         if self.ALLOWED_HOSTS.strip() == "*":

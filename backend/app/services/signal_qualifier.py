@@ -10,6 +10,8 @@ Ini yang membedakan dumb-AI ("BBCA Strong Sell") dari buy-side desk ticket
 
 from __future__ import annotations
 
+from app.core.config import settings
+
 MIN_ABS_SCORE = 0.5              # hanya Strong Buy / Strong Sell
 MIN_HIT_RATE = 50.0              # setup historis ≥ 50% hit
 MIN_EXPECTANCY_PCT = 0.0         # expectancy harus positif
@@ -82,6 +84,17 @@ def qualify(intel: dict, account_size_idr: float = 500_000_000) -> dict:
         )
     else:
         reasons.append(f"Likuiditas OK: ADV 20D ≈ Rp {adv/1e9:.1f}B/hari.")
+
+    # R:R gate — setup dengan R:R < 1:2 tidak layak ambil risk
+    if levels:
+        rr = levels.get("rr_ratio") or 0
+        min_rr = settings.MIN_RR_RATIO
+        if rr < min_rr:
+            blockers.append(
+                f"R:R 1:{rr} < minimum 1:{min_rr} — reward tidak sebanding risk."
+            )
+        else:
+            reasons.append(f"R:R 1:{rr} ≥ minimum 1:{min_rr} — risk-reward layak.")
 
     # --- SUPPORTING EVIDENCE ---
     rsi = ind.get("rsi14")

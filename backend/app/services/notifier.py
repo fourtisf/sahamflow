@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, date as _date
 from decimal import Decimal
 from pathlib import Path
 
@@ -325,6 +325,47 @@ def _build_ticket(intel: dict, qual: dict) -> str:
     return "\n".join(lines)
 
 
+def _cooldown_blocker(db, ticker: str) -> str | None:
+    """Return blocker message if ticker punya signal/trade dalam COOLDOWN_DAYS."""
+    days = settings.COOLDOWN_DAYS
+    if days <= 0:
+        return None
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    recent = db.execute(
+        select(Trade)
+        .where(Trade.ticker == ticker)
+        .where(Trade.entry_date >= cutoff)
+        .order_by(Trade.entry_date.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if recent:
+        return f"Cooldown: signal {ticker} sudah dikirim {recent.entry_date.date()} (<{days} hari)."
+    return None
+
+
+def _earnings_blocker(ticker: str) -> str | None:
+    """Skip kalau ticker dalam window earnings ±EARNINGS_BLOCK_DAYS."""
+    path = settings.EARNINGS_CALENDAR_PATH
+    if not path:
+        return None
+    try:
+        calendar = json.loads(Path(path).read_text())
+    except Exception:
+        return None
+    entry = calendar.get(ticker.upper())
+    if not entry:
+        return None
+    try:
+        ed = _date.fromisoformat(entry["earnings_date"])
+    except Exception:
+        return None
+    today = _date.today()
+    delta = abs((ed - today).days)
+    if delta <= settings.EARNINGS_BLOCK_DAYS:
+        return f"Earnings event {ticker} pada {ed} (delta {delta}d ≤ {settings.EARNINGS_BLOCK_DAYS}d) — skip alert."
+    return None
+
+
 def _record_trade(db, intel: dict, levels: dict, tp_dict: dict, setup_label: str) -> bool:
     """Insert an open Trade row so invalidation_monitor dapat track SL/TP.
 
@@ -413,9 +454,25 @@ def alert_strong_setups(max_per_run: int = 5, min_score_override: float | None =
             header_lines.append(f"  ⚠️ _TEST MODE — threshold composite diturunkan ke {threshold}_")
         telegram_send("\n".join(header_lines))
 
+        watchlist = settings.watchlist_set
         candidates = [r for r in rows if (r.composite_score or 0) >= threshold]
+        # Watchlist filter: kalau di-set, hanya ticker di list yang lolos
+        if watchlist:
+            before = len(candidates)
+            candidates = [r for r in candidates if r.ticker.upper() in watchlist]
+            log.info("Watchlist filter: %d → %d (allowed: %s)", before, len(candidates), watchlist)
         for r in candidates:
             summary["evaluated"] += 1
+            # Pre-qualifier blockers (cooldown + earnings) — production only
+            if min_score_override is None:
+                cd = _cooldown_blocker(db, r.ticker)
+                if cd:
+                    summary["skipped"].append({"ticker": r.ticker, "blockers": [cd]})
+                    continue
+                eb = _earnings_blocker(r.ticker)
+                if eb:
+                    summary["skipped"].append({"ticker": r.ticker, "blockers": [eb]})
+                    continue
             intel = signal_intelligence.build_intel(db, r.ticker)
             if not intel:
                 continue
