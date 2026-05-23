@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import SignalCache
 from app.schemas.responses import ScreenerRow
+from app.services import reversal_scanner
 
 router = APIRouter(prefix="/screener", tags=["screener"])
 
@@ -39,3 +40,13 @@ def screener(min_score: float = 0.0, db: Session = Depends(get_db)):
         )
         for r in rows
     ]
+
+
+@router.get("/reversals")
+def reversals(top_n: int = 15, db: Session = Depends(get_db)):
+    """Reversal candidates — saham dengan signature pembalikan saat market bottoming.
+
+    Skor 0-100 berdasar: RSI/StochRSI oversold, streak turun, reversal day,
+    volume thrust di green close, bullish RSI divergence, gap closed.
+    """
+    return reversal_scanner.scan_universe(db, top_n=top_n)

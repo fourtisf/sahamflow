@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { IhsgChart, EquityChart } from "@/components/Charts";
 import { PortfolioRiskPanel } from "@/components/PortfolioRisk";
+import { ReversalCandidates } from "@/components/ReversalCandidates";
 import { SmartAnalysis } from "@/components/SmartAnalysis";
 import { api } from "@/lib/api";
 import { STOCKS, IHSG_30D, EQUITY, BENCHMARK } from "@/lib/fallback";
@@ -250,11 +251,11 @@ export default function Dashboard() {
         {/* SMART ANALYSIS — per-stock buy-side intel */}
         <SmartAnalysis ticker={sel} />
 
-        {/* BANDAR + PREDICTOR */}
+        {/* BANDAR + REVERSAL CANDIDATES */}
         {show("bandar screener") && (
           <div className="r2e sec">
             <div className="pnl">
-              <div className="pnl-h"><span className="pnl-t">Bandar Detection</span><span className="pnl-n">Wyckoff · Estimasi</span><div className="pnl-r"><span className="pdot" />SCAN</div></div>
+              <div className="pnl-h"><span className="pnl-t">Bandar Detection</span><span className="pnl-n">Wyckoff · Estimasi (butuh broker summary untuk presisi)</span><div className="pnl-r"><span className="pdot" />SCAN</div></div>
               <table className="dt">
                 <thead><tr><th className="n">#</th><th>Sym</th><th className="r">Last</th><th>Phase</th><th className="r">Score</th></tr></thead>
                 <tbody>
@@ -263,29 +264,14 @@ export default function Dashboard() {
                       <td className="n">{i + 1}</td>
                       <td className="sym">{w.ticker}</td>
                       <td className="r mono">{fmtID(w.meta.price)}</td>
-                      <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`}>{w.live?.bandar_phase || "Accum"}</span></td>
+                      <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`}>{w.live?.bandar_phase || "—"}</span></td>
                       <td className={`scl ${scoreClass(w.live?.bandar_score)} mono`}>{w.live?.bandar_score ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="pnl">
-              <div className="pnl-h"><span className="pnl-t">Composite Signal</span><span className="pnl-n">Technical Score</span><div className="pnl-r"><span className="pdot" />{live ? "LIVE" : "EOD"}</div></div>
-              <table className="dt">
-                <thead><tr><th className="n">#</th><th>Sym</th><th className="r">Score</th><th>Signal</th></tr></thead>
-                <tbody>
-                  {watch.map((w, i) => (
-                    <tr key={w.ticker} onClick={() => selectStock(w.ticker)}>
-                      <td className="n">{i + 1}</td>
-                      <td className="sym">{w.ticker}</td>
-                      <td className={`r mono ${(w.live?.composite_score ?? 0) >= 0 ? "up" : "dn"}`}>{w.live?.composite_score ?? "—"}</td>
-                      <td><span className={`sg ${(w.live?.composite_score ?? 0) >= 0.2 ? "sg-b" : (w.live?.composite_score ?? 0) <= -0.2 ? "sg-s" : "sg-h"}`}>{w.live?.signal || "—"}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ReversalCandidates active={regime?.modifier === "Potential Accumulation"} />
           </div>
         )}
 
@@ -293,15 +279,6 @@ export default function Dashboard() {
         {show("risk") && (
           <>
             <PortfolioRiskPanel />
-            <div className="pnl sec">
-              <div className="pnl-h"><span className="pnl-t">Risk Management</span><span className="pnl-n">Portfolio Heat</span><div className="pnl-r"><span className="pdot" />RT</div></div>
-              <div className="rg">
-                <div className="rgc"><div className="rg-l">Portfolio Heat</div><div className="rg-v mono">4.2%</div><div className="rg-bar"><div className="rg-f s" style={{ width: "42%" }} /></div><div className="rg-m">Total open risk · aman</div></div>
-                <div className="rgc"><div className="rg-l">Max DD 30D</div><div className="rg-v dn mono">-3.8%</div><div className="rg-bar"><div className="rg-f s" style={{ width: "28%" }} /></div><div className="rg-m">Dalam batas 5%</div></div>
-                <div className="rgc"><div className="rg-l">Konsentrasi Sektor</div><div className="rg-v mono">38%</div><div className="rg-bar"><div className="rg-f w" style={{ width: "76%" }} /></div><div className="rg-m">Energy berat · rebalance</div></div>
-                <div className="rgc"><div className="rg-l">Sharpe 90D</div><div className="rg-v up mono">1.82</div><div className="rg-bar"><div className="rg-f s" style={{ width: "82%" }} /></div><div className="rg-m">Risk-adjusted kuat</div></div>
-              </div>
-            </div>
             <div className="rr sec">
               <div className="pnl">
                 <div className="pnl-h"><span className="pnl-t">Position Sizer</span><span className="pnl-n">1% Risk · ATR×2 · 1:3</span></div>
@@ -348,13 +325,12 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="pnl">
-              <div className="pnl-h"><span className="pnl-t">Sentiment Engine</span><span className="pnl-n">Social + News 24H</span></div>
+              <div className="pnl-h"><span className="pnl-t">Sentiment Engine</span><span className="pnl-n">PLACEHOLDER — butuh news/social feed</span></div>
               <div className="pnl-b">
-                <div className="sent">
-                  <div className={`sent-v ${meta.sent >= 60 ? "up" : meta.sent <= 45 ? "dn" : "am"}`}>{meta.sent}</div>
-                  <div className="sent-l">{meta.sentL}</div>
-                  <div className="sent-bar"><div className="sent-mk" style={{ left: `${meta.sent}%` }} /></div>
-                  <div className="sent-sc"><span>Fear</span><span>Netral</span><span>Greed</span></div>
+                <div className="alrt alrt-i"><b>► BELUM AKTIF:</b> Skor sentimen butuh sumber data berita & media sosial (Stockbit chatter, Twitter, Bisnis.com headline). Belum disambung. Angka berikut adalah contoh struktur — jangan dipakai untuk keputusan.</div>
+                <div className="sent" style={{ opacity: 0.4 }}>
+                  <div className="sent-v am">—</div>
+                  <div className="sent-l">data sentimen belum tersedia</div>
                 </div>
               </div>
             </div>
@@ -364,37 +340,32 @@ export default function Dashboard() {
         {/* BACKTEST */}
         {show("backtest") && (
           <div className="pnl sec">
-            <div className="pnl-h"><span className="pnl-t">Backtest Engine</span><span className="pnl-n">Composite · 2022-26</span></div>
-            <div className="btg">
-              <div className="btc"><div className="bt-l">Total Return</div><div className="bt-v up mono">+187.4%</div><div className="bt-m">IHSG +24.8%</div></div>
-              <div className="btc"><div className="bt-l">Win Rate</div><div className="bt-v mono">64.2%</div><div className="bt-m">contoh</div></div>
-              <div className="btc"><div className="bt-l">Sharpe</div><div className="bt-v up mono">1.92</div><div className="bt-m">Risk-adjusted</div></div>
-              <div className="btc"><div className="bt-l">Max DD</div><div className="bt-v dn mono">-14.8%</div><div className="bt-m">Recover 38D</div></div>
-              <div className="btc"><div className="bt-l">Avg Win</div><div className="bt-v up mono">+8.4%</div><div className="bt-m">Hold 5.2D</div></div>
-              <div className="btc"><div className="bt-l">Avg Loss</div><div className="bt-v dn mono">-3.2%</div><div className="bt-m">SL active</div></div>
-              <div className="btc"><div className="bt-l">Profit Factor</div><div className="bt-v up mono">2.64</div><div className="bt-m">2.64 : 1</div></div>
-              <div className="btc"><div className="bt-l">Expectancy</div><div className="bt-v up mono">+3.28%</div><div className="bt-m">Per trade</div></div>
+            <div className="pnl-h"><span className="pnl-t">Backtest Engine</span><span className="pnl-n">Per-saham · IDX cost 0.6%</span></div>
+            <div className="pnl-b">
+              <div className="alrt alrt-i"><b>► CARA PAKAI:</b> Backtest live per saham (walk-forward, cost included). Panggil endpoint:</div>
+              <pre style={{ background: "var(--bg2)", padding: 12, borderRadius: 8, fontSize: 11, color: "var(--gold)", overflowX: "auto" }}>
+GET /api/v1/backtest?ticker=BBCA&min_score=0.3
+              </pre>
+              <div className="comp" style={{ borderTop: "none", paddingLeft: 0 }}>
+                <b>Track record per setup</b> sudah otomatis tampil di panel <b>Smart Analysis · [TICKER]</b> di atas. Klik salah satu saham di tabel Bandar → scroll ke section <b>TRACK RECORD</b> — itu hit rate, expectancy, profit factor dari setup yang aktif sekarang, dihitung walk-forward biaya 0.6% round-trip.
+              </div>
+              <div className="cw-sm" style={{ opacity: 0.25, marginTop: 8 }}><EquityChart equity={EQUITY} benchmark={BENCHMARK} /></div>
+              <div className="comp"><b>CATATAN:</b> Equity curve di atas adalah <b>placeholder visual</b>, BUKAN hasil backtest nyata. Angka backtest nyata muncul saat memanggil endpoint di atas atau membuka Smart Analysis.</div>
             </div>
-            <div className="pnl-b"><div className="cw-sm"><EquityChart equity={EQUITY} benchmark={BENCHMARK} /></div></div>
-            <div className="comp"><b>CATATAN:</b> Angka backtest di atas adalah contoh tampilan. Backtest live per saham tersedia via endpoint <b>/api/v1/backtest?ticker=BBCA</b> setelah data historis tersinkron.</div>
           </div>
         )}
 
-        {/* JOURNAL */}
+        {/* JOURNAL — populate via POST /api/v1/trades */}
         {show("journal") && (
-          <div className="rr sec">
-            <div className="pnl">
-              <div className="pnl-h"><span className="pnl-t">Trading Journal</span><span className="pnl-n">Auto-Tracked</span></div>
-              <div className="pnl-b">
-                <div className="alrt alrt-i"><b>► KOSONG:</b> Belum ada trade tercatat. Tambah lewat tombol "Trade Baru" atau endpoint <b>POST /api/v1/trades</b>. P&L akan otomatis terhitung & ter-atribusi.</div>
-              </div>
-            </div>
-            <div className="pnl">
-              <div className="pnl-h"><span className="pnl-t">Atribusi P&L</span><span className="pnl-n">30D</span></div>
-              <div className="pnl-b">
-                <div className="jst"><span className="jst-l">Sinyal Sahamflow</span><span className="jst-v mono">—</span></div>
-                <div className="jst"><span className="jst-l">Intuisi/Diskresi</span><span className="jst-v mono">—</span></div>
-                <div className="jst"><span className="jst-l">Net P&L Realized</span><span className="jst-v mono">—</span></div>
+          <div className="pnl sec">
+            <div className="pnl-h"><span className="pnl-t">Trading Journal · Atribusi P&L</span><span className="pnl-n">Endpoint /api/v1/trades & /trades/attribution</span></div>
+            <div className="pnl-b">
+              <div className="alrt alrt-i"><b>► BELUM ADA TRADE:</b> Catat trade pertama via:
+                <pre style={{ background: "var(--bg2)", padding: 10, borderRadius: 6, fontSize: 10.5, color: "var(--gold)", marginTop: 8, overflowX: "auto" }}>
+{`curl -X POST https://sahamflow.com/api/v1/trades -H "Content-Type: application/json" \\
+  -d '{"ticker":"BBCA","entry_price":5900,"exit_price":6200,"shares":1000,"source":"sahamflow"}'`}
+                </pre>
+                Setelah ada trade, panel ini otomatis menampilkan jurnal & atribusi P&L (sinyal Sahamflow vs diskresi).
               </div>
             </div>
           </div>
