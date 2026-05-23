@@ -226,7 +226,7 @@ export default function Dashboard() {
             <IndexCell label="USD/IDR" q={indices?.usdidr ?? null} decimals={0} />
             <div className="ix"><span className="ix-l">SBN 10Y</span><span className="ix-v mono">6.78%</span><span className="ix-c fl mono">MANUAL</span></div>
             <div className="ix"><span className="ix-l">BI RATE</span><span className="ix-v mono">6.00%</span><span className="ix-c fl mono">MANUAL</span></div>
-            <div className="ix"><span className="ix-l">SMART MONEY</span><span className="ix-v gd mono">PROXY</span><span className="ix-c fl mono">per saham</span></div>
+            <div className="ix"><span className="ix-l">SMART MONEY</span><span className="ix-v gd mono">—</span><span className="ix-c fl mono">cek per saham</span></div>
           </div>
         </div>
 
@@ -329,39 +329,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* FUND + SENTIMENT */}
-        {show("screener") && (
-          <div className="r2e sec">
-            <div className="pnl">
-              <div className="pnl-h"><span className="pnl-t">Fundamental · <span>{sel}</span></span><span className="pnl-n">Quality {meta.qlty}</span></div>
-              <div className="fg">
-                <div className="fc"><span className="fc-n">PER</span><span className={`fc-v ${meta.perC} mono`}>{meta.per}</span></div>
-                <div className="fc"><span className="fc-n">PBV</span><span className={`fc-v ${meta.pbvC} mono`}>{meta.pbv}</span></div>
-                <div className="fc"><span className="fc-n">ROE</span><span className={`fc-v ${meta.roe.startsWith("-") ? "dn" : "up"} mono`}>{meta.roe}</span></div>
-                <div className="fc"><span className="fc-n">DER</span><span className="fc-v up mono">{meta.der}</span></div>
-                <div className="fc"><span className="fc-n">Rev YoY</span><span className={`fc-v ${meta.rev.startsWith("-") ? "dn" : "up"} mono`}>{meta.rev}</span></div>
-                <div className="fc"><span className="fc-n">Net Margin</span><span className={`fc-v ${meta.nm.startsWith("-") ? "dn" : "up"} mono`}>{meta.nm}</span></div>
-                <div className="fc"><span className="fc-n">Mkt Cap</span><span className="fc-v mono">{meta.mcap}</span></div>
-                <div className="fc"><span className="fc-n">Earnings</span><span className="fc-v am mono">{meta.earn}</span></div>
-              </div>
-              <div className="pnl-b">
-                {meta.flags.map((f, i) => (
-                  <div className="flag" key={i}><span className={`fi fi-${f[0]}`}>{f[0] === "ok" ? "✓" : "!"}</span><div><b>{f[1]}</b> — {f[2]}</div></div>
-                ))}
-              </div>
-            </div>
-            <div className="pnl">
-              <div className="pnl-h"><span className="pnl-t">Sentiment Engine</span><span className="pnl-n">PLACEHOLDER — butuh news/social feed</span></div>
-              <div className="pnl-b">
-                <div className="alrt alrt-i"><b>► BELUM AKTIF:</b> Skor sentimen butuh sumber data berita & media sosial (Stockbit chatter, Twitter, Bisnis.com headline). Belum disambung. Angka berikut adalah contoh struktur — jangan dipakai untuk keputusan.</div>
-                <div className="sent" style={{ opacity: 0.4 }}>
-                  <div className="sent-v am">—</div>
-                  <div className="sent-l">data sentimen belum tersedia</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Fundamental panel dipindahkan ke Smart Analysis (Quality tier dari yfinance live) */}
 
         {/* BACKTEST */}
         {show("backtest") && <PortfolioBacktest />}
@@ -415,7 +383,7 @@ GET /api/v1/backtest?ticker=BBCA&min_score=0.3
                       <td className={`r mono ${bandarScoreClass(w.live?.bandar_score, w.live?.bandar_phase)}`}>{w.live?.bandar_score ?? "—"}</td>
                       <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`}>{w.live?.bandar_phase || "—"}</span></td>
                       <td className={`r mono ${((w.live?.indicators as any)?.smart_money_score ?? 0) >= 20 ? "up" : ((w.live?.indicators as any)?.smart_money_score ?? 0) <= -20 ? "dn" : "fl"}`}>{(w.live?.indicators as any)?.smart_money_score ?? "—"}</td>
-                      <td className="r mono">{w.meta?.qlty ?? "—"}</td>
+                      <td className="r mono">{((w.live?.indicators as any)?.quality_score ?? w.meta?.qlty) ?? "—"}</td>
                       <td><span className={`sg ${(w.live?.composite_score ?? 0) >= 0.2 ? "sg-b" : (w.live?.composite_score ?? 0) <= -0.2 ? "sg-s" : "sg-h"}`}>{w.live?.signal || "—"}</span></td>
                     </tr>
                   ))}
