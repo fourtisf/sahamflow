@@ -1,4 +1,4 @@
-import type { RegimeResponse, ScreenerRow, StockAnalysis } from "./types";
+import type { RegimeResponse, ScreenerRow, StockIntel } from "./types";
 
 // Default to a relative path so the same build works behind Nginx (which proxies
 // /api -> backend:8000). Override with NEXT_PUBLIC_API_URL for local dev.
@@ -17,7 +17,9 @@ async function get<T>(path: string): Promise<T | null> {
 export const api = {
   regimeCurrent: () => get<RegimeResponse>("/regime/current"),
   screener: (minScore = -1) => get<ScreenerRow[]>(`/screener?min_score=${minScore}`),
-  stockAnalysis: (ticker: string) => get<StockAnalysis>(`/stock/${ticker}/analysis`),
+  stockAnalysis: (ticker: string) => get<StockIntel>(`/stock/${ticker}/analysis`),
+  stockNarrative: (ticker: string) =>
+    get<{ ticker: string; intel: StockIntel; narrative: string }>(`/stock/${ticker}/narrative`),
   indices: () =>
     get<Record<string, { value: number; change: number; change_pct: number } | null>>(
       "/market/indices"

@@ -57,6 +57,17 @@ def bollinger(close: pd.Series, period: int = 20, std: float = 2.0):
     return ma + std * sd, ma, ma - std * sd
 
 
+def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Wilder's ATR. Needs high/low/close. Used for volatility-aware sizing."""
+    high, low, close = df["high"], df["low"], df["close"]
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [(high - low).abs(), (high - prev_close).abs(), (low - prev_close).abs()],
+        axis=1,
+    ).max(axis=1)
+    return tr.ewm(alpha=1 / period, adjust=False).mean()
+
+
 def parabolic_sar(df: pd.DataFrame, step: float = 0.02, max_step: float = 0.2) -> pd.Series:
     high, low = df["high"].to_numpy(), df["low"].to_numpy()
     n = len(df)
@@ -172,6 +183,62 @@ def composite_score(ohlcv: pd.DataFrame) -> tuple[float, dict[str, float]]:
     }
     score = sum(ind[k] * WEIGHTS[k] for k in WEIGHTS)
     return _clip(score), ind
+
+
+def indicator_breakdown(df: pd.DataFrame) -> dict:
+    """Human-readable indicator snapshot — the numbers a trader actually reads."""
+    close = df["close"]
+    last = float(close.iloc[-1])
+    r = float(rsi(close).iloc[-1])
+    macd_line, signal_line, hist = macd(close)
+    k = float(stoch_rsi(close).iloc[-1])
+    ma20 = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else None
+    ma50 = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else None
+    ma200_window = min(200, len(close))
+    ma200v = float(close.rolling(ma200_window).mean().iloc[-1]) if ma200_window else None
+    vol = df["volume"] if "volume" in df else None
+    vol_ratio = (
+        float(vol.iloc[-1] / vol.rolling(20).mean().iloc[-1])
+        if vol is not None and vol.rolling(20).mean().iloc[-1]
+        else None
+    )
+    atr14 = float(atr(df).iloc[-1]) if {"high", "low"}.issubset(df.columns) else None
+    return {
+        "rsi14": round(r, 2),
+        "macd_hist": round(float(hist.iloc[-1]), 4),
+        "macd_bias": "bullish" if hist.iloc[-1] > 0 else "bearish",
+        "stoch_rsi": round(k, 2),
+        "ma20": round(ma20, 2) if ma20 else None,
+        "ma50": round(ma50, 2) if ma50 else None,
+        "ma200": round(ma200v, 2) if ma200v else None,
+        "ma200_distance_pct": round((last / ma200v - 1) * 100, 2) if ma200v else None,
+        "volume_ratio_20d": round(vol_ratio, 2) if vol_ratio else None,
+        "atr14": round(atr14, 2) if atr14 else None,
+        "atr_pct": round(atr14 / last * 100, 2) if atr14 and last else None,
+    }
+
+
+def execution_levels(last_close: float, atr_value: float | None, bias: str) -> dict | None:
+    """Volatility-aware entry/SL/TP using ATR, with R:R = 1:3.
+
+    bias='long' / 'short'. Returns None if ATR unavailable.
+    """
+    if not atr_value or atr_value <= 0:
+        return None
+    sl_dist = 2 * atr_value
+    tp_dist = 6 * atr_value
+    if bias == "short":
+        sl, tp = last_close + sl_dist, last_close - tp_dist
+    else:
+        sl, tp = last_close - sl_dist, last_close + tp_dist
+    return {
+        "entry": round(last_close, 2),
+        "stop_loss": round(sl, 2),
+        "take_profit": round(tp, 2),
+        "risk_pct": round(sl_dist / last_close * 100, 2),
+        "reward_pct": round(tp_dist / last_close * 100, 2),
+        "rr_ratio": 3.0,
+    }
 
 
 def signal_label(score: float) -> str:

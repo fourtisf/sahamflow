@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IhsgChart, EquityChart } from "@/components/Charts";
+import { SmartAnalysis } from "@/components/SmartAnalysis";
 import { api } from "@/lib/api";
 import { STOCKS, IHSG_30D, EQUITY, BENCHMARK } from "@/lib/fallback";
 import type { RegimeResponse, ScreenerRow } from "@/lib/types";
@@ -235,6 +236,9 @@ export default function Dashboard() {
             <div className="pnl-b"><div className="cw"><IhsgChart data={ihsg?.closes?.length ? ihsg.closes : IHSG_30D} /></div></div>
           </div>
         </div>
+
+        {/* SMART ANALYSIS — per-stock buy-side intel */}
+        <SmartAnalysis ticker={sel} />
 
         {/* BANDAR + PREDICTOR */}
         {show("bandar screener") && (

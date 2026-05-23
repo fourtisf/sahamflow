@@ -1,49 +1,46 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
-from app.models import Fundamentals, SignalCache
-from app.schemas.responses import StockAnalysis
-from app.services import bandar_detector, foreign_flow_analyzer, technical_analysis
-from app.services.data_sync import load_ohlcv_df
+from app.models import Fundamentals
+from app.services import signal_intelligence
 
 router = APIRouter(prefix="/stock", tags=["stock"])
 
 
-@router.get("/{ticker}/analysis", response_model=StockAnalysis)
+@router.get("/{ticker}/analysis")
 def stock_analysis(ticker: str, db: Session = Depends(get_db)):
-    ticker = ticker.upper()
-    df = load_ohlcv_df(db, ticker)
-    if df.empty:
+    """Full smart-money intel: composite, indicator breakdown, ATR levels,
+    bandar, foreign flow, regime-aware conviction. No narrative (call /narrative)."""
+    intel = signal_intelligence.build_intel(db, ticker.upper())
+    if not intel:
+        raise HTTPException(404, f"No OHLCV for {ticker}. Run POST /sync/ohlcv.")
+    return intel
+
+
+@router.get("/{ticker}/narrative")
+def stock_narrative(ticker: str, db: Session = Depends(get_db)):
+    """Buy-side analyst narrative (3 paragraphs, Bahasa Indonesia).
+
+    Requires ANTHROPIC_API_KEY. Uses the same intel payload as /analysis so the
+    model is constrained to the actual numbers — no hallucinated figures.
+    """
+    intel = signal_intelligence.build_intel(db, ticker.upper())
+    if not intel:
         raise HTTPException(404, f"No OHLCV for {ticker}. Run POST /sync/ohlcv.")
 
-    score, indicators = technical_analysis.composite_score(df)
-    foreign_5d = (
-        int(df["foreign_net"].dropna().tail(5).sum())
-        if df["foreign_net"].notna().any()
-        else None
-    )
-    bandar = bandar_detector.detect(df, foreign_5d)
-    ff = foreign_flow_analyzer.analyze(list(df["foreign_net"]))
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(
+            503,
+            "ANTHROPIC_API_KEY not configured — narrative unavailable. "
+            "The structured analysis at /stock/{ticker}/analysis still works.",
+        )
 
-    cached = db.execute(
-        select(SignalCache)
-        .where(SignalCache.ticker == ticker)
-        .order_by(SignalCache.date.desc())
-        .limit(1)
-    ).scalar_one_or_none()
+    from app.services import narrative_generator
 
-    return StockAnalysis(
-        ticker=ticker,
-        last_close=float(df["close"].iloc[-1]),
-        composite_score=round(score, 3),
-        signal=technical_analysis.signal_label(score),
-        indicators=indicators,
-        bandar=bandar,
-        foreign_flow=ff,
-        narrative=cached.narrative if cached else None,
-    )
+    text = narrative_generator.generate_stock_narrative(ticker.upper(), intel)
+    return {"ticker": ticker.upper(), "intel": intel, "narrative": text}
 
 
 @router.get("/{ticker}/fundamental")

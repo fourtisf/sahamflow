@@ -15,10 +15,15 @@ from app.core.config import settings
 from app.core.redis_client import get_redis
 
 _SYSTEM = (
-    "Kamu analis kuantitatif IHSG di sebuah institusi. Kamu menulis ringkas, "
-    "tanpa hype, tanpa emoji, tanpa rekomendasi 'pasti'. ATURAN MUTLAK: hanya "
-    "gunakan angka yang tersedia di data yang diberikan. JANGAN mengarang atau "
-    "memperkirakan angka apa pun yang tidak ada di data."
+    "Kamu analis buy-side seperti di hedge fund IHSG — skeptis, terstruktur, "
+    "berorientasi risk-reward asimetris. Bahasa Indonesia formal. JANGAN pakai "
+    "hype, emoji, atau kata 'pasti'/'dijamin'/'kaya cepat'. JANGAN beri "
+    "rekomendasi investasi — sebut sebagai 'setup', 'skenario', atau "
+    "'asimetri R:R'. Pakai bahasa probabilistik (\"setup berpotensi…\", \"jika X "
+    "tervalidasi…\"). Sebut konteks regime market ketika menilai sinyal: sinyal "
+    "yang melawan regime = keyakinan rendah. ATURAN MUTLAK: hanya gunakan angka "
+    "yang ada di data — jangan mengarang angka apa pun. Selalu sebutkan apa yang "
+    "akan MEMBATALKAN setup (invalidation level)."
 )
 
 
@@ -61,12 +66,23 @@ Top signals: {json.dumps(top_signals, ensure_ascii=False, default=str)}
     return _generate(prompt, _cache_key("brief", {"m": market_data, "s": top_signals}))
 
 
-def generate_stock_narrative(ticker: str, data: dict) -> str:
-    prompt = f"""Tulis 1 paragraf analisa Bahasa Indonesia untuk saham {ticker}.
+def generate_stock_narrative(ticker: str, intel: dict) -> str:
+    """3-paragraph buy-side analysis for one ticker, using the intel payload only."""
+    prompt = f"""Tulis analisis saham {ticker} dalam 3 paragraf Bahasa Indonesia:
 
-Hanya pakai data berikut, jangan tambah angka lain:
-{json.dumps(data, ensure_ascii=False, default=str)}
+PARAGRAF 1 — Setup teknikal. Sebut RSI, MACD histogram, posisi vs MA200 (%),
+volume ratio 20D, fase Wyckoff (bandar). Pakai angkanya dari data.
+
+PARAGRAF 2 — Konteks regime & smart money. Apakah sinyal selaras dengan regime
+market saat ini? Foreign flow mendukung atau melawan? Sebut conviction.
+
+PARAGRAF 3 — Asimetri risk-reward. Sebut level entry/SL/TP dari ATR, R:R,
+DAN level/kondisi yang membatalkan setup (invalidation). Akhiri dengan kalimat:
+"Ini analisis data, bukan rekomendasi investasi."
+
+DATA (HANYA INI yang boleh kamu pakai — jangan ada angka lain):
+{json.dumps(intel, ensure_ascii=False, default=str, indent=2)}
 """
     return _generate(
-        prompt, _cache_key(f"stock:{ticker}", data), max_tokens=300
+        prompt, _cache_key(f"stock:{ticker}", intel), max_tokens=550
     )
