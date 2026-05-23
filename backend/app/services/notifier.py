@@ -298,6 +298,17 @@ def _build_ticket(intel: dict, qual: dict) -> str:
         f"  Bias    : {intel.get('action', 'BUY')}  ·  Regime-aligned: {'✅' if regime.get('regime_aligned') else '⚠️ counter-trend'}",
     ]
 
+    # Gap context (informational, not a blocker)
+    gap = intel.get("gap")
+    if gap and gap.get("severity") != "normal":
+        emoji = "📈" if gap["direction"] == "up" else "📉"
+        lines += [
+            "",
+            "*━━ GAP CHECK ━━*",
+            f"  {emoji} Open {gap['open']:,.0f} vs prev close {gap['prev_close']:,.0f}",
+            f"  _{gap['interpretation']}_",
+        ]
+
     lines += ["", "*━━ CONFLUENCE ━━*"]
     for b in _confluence_bullets(intel, qual):
         lines.append(f"  ✓ {b}")
@@ -340,19 +351,6 @@ def _cooldown_blocker(db, ticker: str) -> str | None:
     ).scalar_one_or_none()
     if recent:
         return f"Cooldown: signal {ticker} sudah dikirim {recent.entry_date.date()} (<{days} hari)."
-    return None
-
-
-def _earnings_blocker(ticker: str) -> str | None:
-    """Skip kalau ticker dalam window earnings ±EARNINGS_BLOCK_DAYS.
-
-    Sumber: hybrid manual override + yfinance auto-cache (lihat earnings_calendar).
-    """
-    from app.services import earnings_calendar
-
-    in_win, ed, delta = earnings_calendar.is_in_earnings_window(ticker)
-    if in_win:
-        return f"Earnings event {ticker} pada {ed} (delta {delta}d ≤ {settings.EARNINGS_BLOCK_DAYS}d) — skip alert."
     return None
 
 
@@ -459,13 +457,15 @@ def alert_strong_setups(max_per_run: int = 5, min_score_override: float | None =
                 if cd:
                     summary["skipped"].append({"ticker": r.ticker, "blockers": [cd]})
                     continue
-                eb = _earnings_blocker(r.ticker)
-                if eb:
-                    summary["skipped"].append({"ticker": r.ticker, "blockers": [eb]})
-                    continue
             intel = signal_intelligence.build_intel(db, r.ticker)
             if not intel:
                 continue
+            # Inject gap info — informational, tidak block signal
+            try:
+                from app.services import gap_detector
+                intel["gap"] = gap_detector.compute_overnight_gap(db, r.ticker)
+            except Exception as e:
+                log.debug("Gap calc %s failed: %s", r.ticker, e)
             qual = signal_qualifier.qualify(intel, account_size_idr=settings.ACCOUNT_SIZE_IDR)
             # In test mode, kirim juga yang gagal qualifier supaya bisa lihat format
             passed = qual["qualified"] or min_score_override is not None

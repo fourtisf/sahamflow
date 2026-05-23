@@ -61,12 +61,6 @@ class Settings(BaseSettings):
     # Watchlist optional: comma-separated ticker (mis. "BBRI,ANTM,TLKM"). Kalau
     # diisi, hanya ticker di list yang akan kirim alert. Kosong = semua qualified.
     WATCHLIST_TICKERS: str = ""
-    # Path ke file earnings calendar JSON. Format:
-    # {"BBRI": {"earnings_date": "2026-05-28"}, ...}
-    # Bot skip alert jika today dalam window ±EARNINGS_BLOCK_DAYS.
-    EARNINGS_CALENDAR_PATH: str = ""
-    EARNINGS_BLOCK_DAYS: int = 2
-
     @property
     def watchlist_set(self) -> set[str]:
         return {t.strip().upper() for t in self.WATCHLIST_TICKERS.split(",") if t.strip()}
