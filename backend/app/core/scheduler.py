@@ -45,6 +45,13 @@ def _post_eod_alerts():
     notifier.alert_strong_setups()
 
 
+def _refresh_earnings_calendar():
+    """Mingguan: pull earnings dates dari yfinance untuk seluruh universe."""
+    from app.services import earnings_calendar
+
+    earnings_calendar.refresh_from_yfinance()
+
+
 def start_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is not None:
@@ -63,6 +70,11 @@ def start_scheduler() -> BackgroundScheduler:
     )
     sched.add_job(_invalidation_check, "cron", hour=18, minute=50, id="invalidation_monitor_eod")
     sched.add_job(_morning_brief, "cron", hour=7, minute=0, id="morning_brief")
+    # Earnings calendar refresh: mingguan (Minggu 06:00) — dates jarang berubah.
+    sched.add_job(
+        _refresh_earnings_calendar, "cron",
+        day_of_week="sun", hour=6, minute=0, id="earnings_calendar_refresh",
+    )
     sched.start()
     log.info("Scheduler started (tz=%s)", settings.TIMEZONE)
     _scheduler = sched

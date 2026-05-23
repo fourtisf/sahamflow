@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, date as _date
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -344,24 +344,14 @@ def _cooldown_blocker(db, ticker: str) -> str | None:
 
 
 def _earnings_blocker(ticker: str) -> str | None:
-    """Skip kalau ticker dalam window earnings ±EARNINGS_BLOCK_DAYS."""
-    path = settings.EARNINGS_CALENDAR_PATH
-    if not path:
-        return None
-    try:
-        calendar = json.loads(Path(path).read_text())
-    except Exception:
-        return None
-    entry = calendar.get(ticker.upper())
-    if not entry:
-        return None
-    try:
-        ed = _date.fromisoformat(entry["earnings_date"])
-    except Exception:
-        return None
-    today = _date.today()
-    delta = abs((ed - today).days)
-    if delta <= settings.EARNINGS_BLOCK_DAYS:
+    """Skip kalau ticker dalam window earnings ±EARNINGS_BLOCK_DAYS.
+
+    Sumber: hybrid manual override + yfinance auto-cache (lihat earnings_calendar).
+    """
+    from app.services import earnings_calendar
+
+    in_win, ed, delta = earnings_calendar.is_in_earnings_window(ticker)
+    if in_win:
         return f"Earnings event {ticker} pada {ed} (delta {delta}d ≤ {settings.EARNINGS_BLOCK_DAYS}d) — skip alert."
     return None
 
