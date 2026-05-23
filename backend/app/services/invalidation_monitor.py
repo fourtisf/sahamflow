@@ -190,18 +190,16 @@ def _build_pnl_summary() -> str:
 
 
 def refresh_pinned_pnl_summary() -> bool:
-    """Edit-in-place pinned message. Fallback: kalau msg_id hilang/invalid,
-    bikin baru, pin, simpan id. Tidak spam channel dengan summary berulang."""
+    """Edit-in-place pinned PnL message. Fallback: kirim baru + pin (tanpa
+    unpin all, karena ada pinned gap radar juga)."""
     text = _build_pnl_summary()
     msg_id = notifier.get_pinned_msg_id()
     if msg_id:
         if notifier.telegram_edit(msg_id, text):
             return True
-        # Edit failed (message deleted, too old, dll) — fall through to repin
-        log.info("Edit pinned msg %s failed, repinning fresh.", msg_id)
+        log.info("Edit pinned PnL msg %s failed, repinning fresh.", msg_id)
         notifier.set_pinned_msg_id(None)
 
-    notifier.telegram_unpin_all()
     new_id = notifier.telegram_send_with_id(text)
     if not new_id:
         return False

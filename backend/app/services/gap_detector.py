@@ -165,6 +165,111 @@ def combined_interpretation(stock_gap: dict | None, ihsg_gap: dict | None) -> st
     )
 
 
+def scan_universe_gaps() -> tuple[dict, list[dict]]:
+    """Scan semua ticker di universe untuk gap notable. Returns (ihsg_gap, notable_list).
+
+    notable_list: [{ticker, gap_pct, severity, direction, ...}, ...] sorted by abs gap desc.
+    Hanya yang severity != 'normal' yang masuk.
+    """
+    from app.core.config import settings
+    from app.core.database import SessionLocal
+
+    ihsg = compute_ihsg_gap()
+    notable = []
+    with SessionLocal() as db:
+        for t in settings.universe:
+            s = compute_overnight_gap(db, t)
+            if not s or s.get("severity") == "normal":
+                continue
+            s["ticker"] = t
+            notable.append(s)
+    notable.sort(key=lambda x: abs(x["gap_pct"]), reverse=True)
+    return ihsg, notable
+
+
+def build_gap_radar_text() -> str:
+    """Bangun pinned message GAP RADAR untuk semua ticker notable."""
+    from datetime import datetime
+
+    ihsg, notable = scan_universe_gaps()
+
+    lines = ["📊 *GAP RADAR — IDX LQ45*"]
+    lines.append(f"_Updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}_")
+    lines.append("")
+
+    if ihsg:
+        emoji = "📈" if ihsg["direction"] == "up" else "📉" if ihsg["direction"] == "down" else "➖"
+        lines.append(f"{emoji} *IHSG* : {ihsg['gap_pct']:+.2f}% ({ihsg['severity']})")
+    else:
+        lines.append("➖ *IHSG* : data tidak tersedia")
+    lines.append("")
+
+    if not notable:
+        lines.append("_Tidak ada saham dengan gap notable hari ini. Market tenang._")
+        return "\n".join(lines)
+
+    # Split by direction
+    gap_up = [n for n in notable if n["direction"] == "up"]
+    gap_down = [n for n in notable if n["direction"] == "down"]
+
+    if gap_up:
+        lines.append("*━━ GAP UP ━━*")
+        for n in gap_up[:15]:
+            sev_emoji = "🔥" if n["severity"] == "extreme" else "⬆️" if n["severity"] == "large" else "↗️"
+            lines.append(f"  {sev_emoji} `{n['ticker']:<6}` {n['gap_pct']:+.2f}%  _({n['severity']})_")
+        lines.append("")
+
+    if gap_down:
+        lines.append("*━━ GAP DOWN ━━*")
+        for n in gap_down[:15]:
+            sev_emoji = "💥" if n["severity"] == "extreme" else "⬇️" if n["severity"] == "large" else "↘️"
+            lines.append(f"  {sev_emoji} `{n['ticker']:<6}` {n['gap_pct']:+.2f}%  _({n['severity']})_")
+        lines.append("")
+
+    # Smart money takeaway
+    lines.append("*━━ SMART MONEY NOTES ━━*")
+    if ihsg and ihsg["severity"] != "normal":
+        lines.append(f"  • IHSG gap {ihsg['direction']} {ihsg['gap_pct']:+.2f}% → market-wide sentiment, gap saham yang sama arah = ikut macro.")
+    else:
+        lines.append("  • IHSG flat → semua gap di bawah ini *ISOLATED* (bukan macro). Investigasi per ticker.")
+    if gap_down:
+        biggest = gap_down[0]
+        lines.append(f"  • Gap down terbesar: *{biggest['ticker']}* {biggest['gap_pct']:+.2f}% — potensi fill ke atas / akumulasi smart money.")
+    if gap_up:
+        biggest = gap_up[0]
+        lines.append(f"  • Gap up terbesar: *{biggest['ticker']}* {biggest['gap_pct']:+.2f}% — leader hari ini, hati-hati exhaustion.")
+
+    lines.append("")
+    lines.append("_Bukan rekomendasi. Cross-check volume + struktur chart sebelum entry._")
+    return "\n".join(lines)
+
+
+def refresh_gap_radar_pinned() -> bool:
+    """Edit-in-place pinned gap radar message. State key terpisah dari PnL."""
+    from app.services import notifier
+
+    text = build_gap_radar_text()
+    state = notifier._load_state()
+    msg_id = state.get("pinned_gap_msg_id")
+
+    if msg_id:
+        if notifier.telegram_edit(int(msg_id), text):
+            return True
+        log.info("Gap radar edit failed, repinning fresh.")
+        state.pop("pinned_gap_msg_id", None)
+        notifier._save_state(state)
+
+    new_id = notifier.telegram_send_with_id(text)
+    if not new_id:
+        return False
+    ok = notifier.telegram_pin(new_id, disable_notification=True)
+    if ok:
+        state = notifier._load_state()
+        state["pinned_gap_msg_id"] = new_id
+        notifier._save_state(state)
+    return ok
+
+
 def _interpret(gap_pct: float, severity: str, direction: str) -> str:
     """Smart-money commentary singkat untuk dipakai di alert message."""
     if severity == "normal":

@@ -45,6 +45,13 @@ def _post_eod_alerts():
     notifier.alert_strong_setups()
 
 
+def _refresh_gap_radar():
+    """Update pinned GAP RADAR message setelah EOD data masuk."""
+    from app.services import gap_detector
+
+    gap_detector.refresh_gap_radar_pinned()
+
+
 def start_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is not None:
@@ -62,6 +69,9 @@ def start_scheduler() -> BackgroundScheduler:
         hour="9-15", minute=15, day_of_week="mon-fri", id="invalidation_monitor_intraday",
     )
     sched.add_job(_invalidation_check, "cron", hour=18, minute=50, id="invalidation_monitor_eod")
+    # Gap radar: refresh setelah EOD sync + pagi sebelum market buka (jam 8:00).
+    sched.add_job(_refresh_gap_radar, "cron", hour=18, minute=55, id="gap_radar_eod")
+    sched.add_job(_refresh_gap_radar, "cron", hour=8, minute=0, day_of_week="mon-fri", id="gap_radar_premarket")
     sched.add_job(_morning_brief, "cron", hour=7, minute=0, id="morning_brief")
     sched.start()
     log.info("Scheduler started (tz=%s)", settings.TIMEZONE)
