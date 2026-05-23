@@ -118,6 +118,37 @@ def load_ohlcv_df(db: Session, ticker: str, days: int = 250) -> pd.DataFrame:
     return df.tail(days)
 
 
+def sync_foreign_flow(target_date: date | None = None) -> dict:
+    """Best-effort pull of foreign buy/sell from idx.co.id daily summary.
+
+    Updates the existing OHLCV rows in-place. Silently returns {scraped: 0}
+    if IDX endpoint is down — no fabricated data.
+    """
+    from app.data_sources import idx_scraper
+
+    target = target_date or date.today()
+    rows = idx_scraper.fetch_foreign_flow(target)
+    updated = 0
+    with SessionLocal() as db:
+        for rec in rows:
+            res = db.execute(
+                OHLCVDaily.__table__.update()
+                .where(
+                    (OHLCVDaily.ticker == rec["ticker"])
+                    & (OHLCVDaily.date == rec["date"])
+                )
+                .values(
+                    foreign_buy=rec["foreign_buy"],
+                    foreign_sell=rec["foreign_sell"],
+                    foreign_net=rec["foreign_net"],
+                )
+            )
+            updated += res.rowcount or 0
+        db.commit()
+    log.info("Foreign flow sync %s: scraped=%d updated=%d", target, len(rows), updated)
+    return {"scraped": len(rows), "updated": updated, "date": str(target)}
+
+
 def generate_signals(tickers: list[str] | None = None, on: date | None = None) -> dict:
     tickers = tickers or settings.universe
     on = on or date.today()

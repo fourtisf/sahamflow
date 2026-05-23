@@ -48,6 +48,9 @@ class TradeIn(BaseModel):
     entry_date: datetime | None = None
     exit_date: datetime | None = None
     source: str = Field(default="diskresi", pattern="^(sahamflow|diskresi)$")
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    setup: str | None = None
     notes: str | None = None
 
 

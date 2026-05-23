@@ -203,6 +203,11 @@ def indicator_breakdown(df: pd.DataFrame) -> dict:
         else None
     )
     atr14 = float(atr(df).iloc[-1]) if {"high", "low"}.issubset(df.columns) else None
+    adv_value_20d = (
+        float((df["close"] * df["volume"]).rolling(20).mean().iloc[-1])
+        if vol is not None
+        else None
+    )
     return {
         "rsi14": round(r, 2),
         "macd_hist": round(float(hist.iloc[-1]), 4),
@@ -215,6 +220,7 @@ def indicator_breakdown(df: pd.DataFrame) -> dict:
         "volume_ratio_20d": round(vol_ratio, 2) if vol_ratio else None,
         "atr14": round(atr14, 2) if atr14 else None,
         "atr_pct": round(atr14 / last * 100, 2) if atr14 and last else None,
+        "adv_value_idr_20d": int(adv_value_20d) if adv_value_20d else None,
     }
 
 

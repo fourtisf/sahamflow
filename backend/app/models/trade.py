@@ -23,4 +23,8 @@ class Trade(Base):
     exit_date: Mapped[datetime | None] = mapped_column(DateTime)
     pnl_pct: Mapped[Decimal | None] = mapped_column(Numeric)
     source: Mapped[str | None] = mapped_column(String(20))  # 'sahamflow' | 'diskresi'
+    stop_loss: Mapped[Decimal | None] = mapped_column(Numeric)
+    take_profit: Mapped[Decimal | None] = mapped_column(Numeric)
+    setup: Mapped[str | None] = mapped_column(String(80))
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime)
     notes: Mapped[str | None] = mapped_column(Text)

@@ -1,24 +1,77 @@
-"""IDX official data scraper — foreign flow (EOD).
+"""IDX foreign flow scraper — best-effort EOD dari idx.co.id.
 
-STATUS: stub for Tahap 3. yfinance does not expose foreign buy/sell, so foreign
-flow must come from idx.co.id/market-data (legal, EOD) or a paid feed.
+Endpoint resmi IDX: /primary/StockData/GetSecuritiesStock untuk daily summary.
+Format JSON; berisi foreign buy/sell per ticker.
 
-This module is intentionally a typed placeholder so the foreign-flow analyzer and
-sync pipeline can be wired now and swapped to a real implementation later. It must
-NEVER fabricate numbers — callers treat an empty result as "no data".
-See docs/DATA_SOURCES.md for the legality notes and the scraping plan.
+CATATAN JUJUR:
+- IDX kadang ubah endpoint/format tanpa pemberitahuan → scraper bisa break.
+- Untuk akurasi presisi (broker code per ticker), TETAP butuh feed berbayar
+  (RTI Business / Stockbit Pro). Module ini menutup gap "n/a" sebagian saja.
+- Return [] kalau gagal, JANGAN mengarang angka.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import date
+
+import httpx
+
+log = logging.getLogger("sahamflow.idx_scraper")
+
+IDX_URL = "https://www.idx.co.id/primary/StockData/GetSecuritiesStock"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Sahamflow research bot)",
+    "Accept": "application/json, text/plain, */*",
+    "X-Requested-With": "XMLHttpRequest",
+    "Referer": "https://www.idx.co.id/en/market-data/stocks-data/stock-list/",
+}
 
 
 def fetch_foreign_flow(target_date: date) -> list[dict]:
-    """Return per-ticker foreign buy/sell/net for a trading date.
+    """Try to fetch daily summary; populate foreign_buy/sell/net per ticker.
 
-    Returns [] until a real IDX scraper / paid feed is connected. Each record:
-    {"ticker": str, "date": date, "foreign_buy": int, "foreign_sell": int,
-     "foreign_net": int}.
+    Returns list of {ticker, date, foreign_buy, foreign_sell, foreign_net}.
+    Returns [] silently if IDX endpoint is unavailable or format changed.
     """
-    return []
+    params = {
+        "code": "",
+        "start": 0,
+        "length": 9999,
+        "TradingDate": target_date.strftime("%Y%m%d"),
+        "language": "en-us",
+    }
+    try:
+        with httpx.Client(headers=HEADERS, timeout=20) as client:
+            r = client.get(IDX_URL, params=params)
+            if r.status_code != 200:
+                log.warning("IDX %s for %s", r.status_code, target_date)
+                return []
+            data = r.json()
+    except Exception as e:
+        log.warning("IDX scrape failed: %s", e)
+        return []
+
+    items = data.get("data") if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        return []
+
+    out: list[dict] = []
+    for it in items:
+        code = (it.get("StockCode") or it.get("Code") or "").upper()
+        if not code or len(code) > 6:
+            continue
+        try:
+            f_buy = int(it.get("ForeignBuy") or 0)
+            f_sell = int(it.get("ForeignSell") or 0)
+        except (TypeError, ValueError):
+            continue
+        out.append({
+            "ticker": code,
+            "date": target_date,
+            "foreign_buy": f_buy,
+            "foreign_sell": f_sell,
+            "foreign_net": f_buy - f_sell,
+        })
+    log.info("IDX scrape: %d tickers for %s", len(out), target_date)
+    return out

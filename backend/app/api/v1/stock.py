@@ -43,6 +43,14 @@ def stock_narrative(ticker: str, db: Session = Depends(get_db)):
     return {"ticker": ticker.upper(), "intel": intel, "narrative": text}
 
 
+@router.get("/{ticker}/news")
+def stock_news(ticker: str, limit: int = 8):
+    """Berita per saham (yfinance). Sparse untuk saham IDX — kalau kosong,
+    butuh news feed berbayar/lokal (bisnis.com, IDX disclosure)."""
+    from app.data_sources import yahoo_finance as yf
+    return {"ticker": ticker.upper(), "news": yf.fetch_news(ticker.upper(), limit=limit)}
+
+
 @router.get("/{ticker}/fundamental")
 def stock_fundamental(ticker: str, db: Session = Depends(get_db)):
     ticker = ticker.upper()

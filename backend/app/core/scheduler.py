@@ -19,6 +19,16 @@ _scheduler: BackgroundScheduler | None = None
 
 def _sync_eod():
     data_sync.sync_ohlcv()
+    # Best-effort foreign flow scrape right after OHLCV.
+    try:
+        data_sync.sync_foreign_flow()
+    except Exception as e:
+        log.warning("Foreign flow sync failed: %s", e)
+
+
+def _invalidation_check():
+    from app.services import invalidation_monitor
+    invalidation_monitor.check_open_positions()
 
 
 def _morning_brief():
@@ -45,6 +55,11 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(data_sync.compute_regime, "cron", hour=18, minute=0, id="compute_regime")
     sched.add_job(data_sync.generate_signals, "cron", hour=18, minute=30, id="generate_signals")
     sched.add_job(_post_eod_alerts, "cron", hour=18, minute=45, id="post_eod_alerts")
+    # Invalidation monitor: tiap jam selama market jam IDX.
+    sched.add_job(
+        _invalidation_check, "cron",
+        hour="9-15", minute=15, day_of_week="mon-fri", id="invalidation_monitor",
+    )
     sched.add_job(_morning_brief, "cron", hour=7, minute=0, id="morning_brief")
     sched.start()
     log.info("Scheduler started (tz=%s)", settings.TIMEZONE)

@@ -21,6 +21,13 @@ def sync_regime():
     return data_sync.compute_regime()
 
 
+@router.post("/sync/foreign-flow")
+def sync_foreign_flow():
+    """Best-effort scrape idx.co.id daily summary. May return {scraped:0} if IDX
+    endpoint is down — no fabricated data."""
+    return data_sync.sync_foreign_flow()
+
+
 @router.post("/generate/signals")
 def generate_signals():
     return {"signals": data_sync.generate_signals()}

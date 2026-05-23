@@ -164,6 +164,32 @@ def usdidr_change_pct_30d() -> float | None:
     return round((last / first - 1) * 100, 2)
 
 
+def fetch_news(ticker: str, limit: int = 8) -> list[dict]:
+    """Recent news per ticker via yfinance. Honest about source quality —
+    yfinance news for IDX is sparse and sometimes stale; returns [] if none."""
+    symbol = to_yahoo_symbol(ticker)
+    try:
+        items = yf.Ticker(symbol).news or []
+    except Exception:
+        return []
+    out = []
+    for n in items[:limit]:
+        content = n.get("content", n)
+        title = content.get("title") if isinstance(content, dict) else n.get("title")
+        if not title:
+            continue
+        publisher = (content.get("provider") or {}).get("displayName") if isinstance(content, dict) else n.get("publisher")
+        link = (content.get("clickThroughUrl") or content.get("canonicalUrl") or {}).get("url") if isinstance(content, dict) else n.get("link")
+        pub_date = content.get("pubDate") if isinstance(content, dict) else n.get("providerPublishTime")
+        out.append({
+            "title": title,
+            "publisher": publisher,
+            "link": link,
+            "published": pub_date,
+        })
+    return out
+
+
 def fetch_info(ticker: str) -> dict:
     """Fetch metadata (name, sector, market cap) for stocks table seeding."""
     symbol = to_yahoo_symbol(ticker)

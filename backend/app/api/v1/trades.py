@@ -26,6 +26,9 @@ def create_trade(payload: TradeIn, db: Session = Depends(get_db)):
         exit_date=payload.exit_date,
         pnl_pct=_pnl_pct(payload.entry_price, payload.exit_price),
         source=payload.source,
+        stop_loss=getattr(payload, "stop_loss", None),
+        take_profit=getattr(payload, "take_profit", None),
+        setup=getattr(payload, "setup", None),
         notes=payload.notes,
     )
     db.add(trade)
@@ -38,6 +41,48 @@ def create_trade(payload: TradeIn, db: Session = Depends(get_db)):
 def list_trades(db: Session = Depends(get_db)):
     rows = db.execute(select(Trade).order_by(Trade.entry_date.desc())).scalars().all()
     return rows
+
+
+@router.get("/equity-curve")
+def equity_curve(db: Session = Depends(get_db)):
+    """Equity curve dari trade nyata (closed only), oldest-to-newest.
+
+    Hasil: list {date, cumulative_pnl_pct}. Drawdown dihitung dari peak.
+    Inilah ukuran sebenarnya apakah tool ini menghasilkan uang.
+    """
+    rows = (
+        db.execute(
+            select(Trade)
+            .where(Trade.exit_date.isnot(None), Trade.pnl_pct.isnot(None))
+            .order_by(Trade.exit_date)
+        )
+        .scalars()
+        .all()
+    )
+    curve = []
+    cum = 0.0
+    peak = 0.0
+    max_dd = 0.0
+    for t in rows:
+        cum += float(t.pnl_pct)
+        peak = max(peak, cum)
+        dd = cum - peak
+        max_dd = min(max_dd, dd)
+        curve.append({
+            "date": str(t.exit_date.date()) if t.exit_date else None,
+            "ticker": t.ticker,
+            "pnl_pct": float(t.pnl_pct),
+            "cumulative_pct": round(cum, 2),
+            "drawdown_pct": round(dd, 2),
+            "source": t.source,
+            "setup": t.setup,
+        })
+    return {
+        "trades": len(curve),
+        "final_pnl_pct": round(cum, 2),
+        "max_drawdown_pct": round(max_dd, 2),
+        "curve": curve,
+    }
 
 
 @router.get("/attribution")
