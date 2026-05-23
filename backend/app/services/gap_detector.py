@@ -249,22 +249,52 @@ PATTERN_META = {
 
 
 def _entry_plan(record: dict) -> str | None:
-    """Concise entry/SL plan per pola."""
+    """Entry/SL plan trend-aware. Smart money rule: jangan kejar breakout di
+    downtrend. Volume kering = setup tidak valid. Counter-trend hanya kalau ada
+    confluence kuat (volume thrust + foreign net buy)."""
     pat = record.get("pattern")
     high = record.get("high")
     low = record.get("low")
     close = record.get("close")
     open_ = record.get("open")
+    mad = record.get("ma200_distance_pct") or 0
+    vr = record.get("volume_ratio_20d") or 0
+    fn5 = record.get("foreign_net_5d") or 0
     if not (high and low and close):
         return None
+
+    is_downtrend = mad < -5
+    is_uptrend = mad > 5
+    weak_volume = vr < 1.0
+    strong_volume = vr >= 1.5
+    foreign_supportive = fn5 > 0
+
     if pat == "GAP_FILL_BULL":
+        if is_downtrend and not (strong_volume and foreign_supportive):
+            return (
+                f"⚠️ COUNTER-TREND di downtrend (vs MA200 {mad:+.1f}%). "
+                f"WATCH only — tunggu reclaim MA200 + volume ≥ 1.5× + foreign net buy. "
+                f"Jangan kejar breakout."
+            )
+        if weak_volume:
+            return (
+                f"⚠️ Volume {vr:.1f}× kering — gap fill tanpa konfirmasi institusi. "
+                f"WATCH, tunggu volume thrust ≥ 1.5×."
+            )
         return f"entry > `{high:,.0f}` (high)  ·  SL `{low:,.0f}` (low)"
+
     if pat == "GAP_AND_GO":
+        if is_downtrend:
+            return f"⚠️ Counter-trend di downtrend — pop & fade risk tinggi. WATCH only."
+        if weak_volume:
+            return f"⚠️ Volume {vr:.1f}× lemah — continuation lemah. Tunggu pullback + vol thrust."
         return f"entry pullback ke `{open_:,.0f}` (gap)  ·  SL `{low:,.0f}`"
+
     if pat == "GAP_UP_FAIL":
-        return "AVOID — tunggu konfirmasi reclaim high atau setup baru"
+        return "AVOID — exhaustion. Tunggu konfirmasi reclaim high atau setup baru."
+
     if pat == "GAP_DN_CONT":
-        return "AVOID — jangan averaging, tunggu reversal candle + volume"
+        return "AVOID — bearish persist. Jangan averaging, tunggu reversal candle + volume."
     return None
 
 
