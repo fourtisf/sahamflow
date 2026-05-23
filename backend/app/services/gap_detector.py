@@ -248,6 +248,70 @@ PATTERN_META = {
 }
 
 
+SECTOR_ID = {
+    "Financials": "Keuangan", "Energy": "Energi", "Materials": "Tambang",
+    "Industrials": "Industri", "Consumer-NC": "Konsumsi", "Consumer-Cyc": "Ritel",
+    "Healthcare": "Kesehatan", "Property": "Properti", "Technology": "Teknologi",
+    "Telecom": "Telkom", "Investment": "Investasi", "Transportation": "Transport",
+    "Utilities": "Utilitas", "Unknown": "—",
+}
+
+
+def _action_verdict(record: dict) -> tuple[str, str]:
+    """Return (verdict, plan_text). Verdict: BUY / WATCH / AVOID."""
+    pat = record.get("pattern")
+    vr = record.get("volume_ratio_20d") or 0
+    mad = record.get("ma200_distance_pct") or 0
+    high = record.get("high")
+    low = record.get("low")
+    open_ = record.get("open")
+    is_down = mad < -5
+    is_up = mad > 5
+    weak_vol = vr < 1.0
+    strong_vol = vr >= 1.5
+
+    if pat == "GAP_FILL_BULL":
+        if is_down and not strong_vol:
+            return ("WATCH", "counter-trend di downtrend — tunggu reclaim MA200 + volume thrust ≥1.5×")
+        if weak_vol:
+            return ("WATCH", f"volume {vr:.1f}× lemah — tunggu konfirmasi volume thrust ≥1.5×")
+        if high and low:
+            return ("BUY", f"entry > {high:,.0f} (breakout high) · SL {low:,.0f} (low)")
+        return ("BUY", "konfirmasi struktur chart sebelum entry")
+    if pat == "GAP_AND_GO":
+        if is_down:
+            return ("WATCH", "counter-trend di downtrend — pop & fade risk tinggi")
+        if weak_vol:
+            return ("WATCH", f"volume {vr:.1f}× lemah — continuation tipis")
+        if open_ and low:
+            return ("BUY", f"entry pullback ke {open_:,.0f} (gap) · SL {low:,.0f}")
+        return ("BUY", "konfirmasi pullback ke gap sebelum entry")
+    if pat == "GAP_UP_FAIL":
+        return ("AVOID", "exhaustion trap, smart money distribusi — tunggu setup baru")
+    if pat == "GAP_DN_CONT":
+        return ("AVOID", "bearish persist — jangan averaging, tunggu reversal candle")
+    return ("WATCH", "")
+
+
+def _top_picks(notable: list[dict], top_n: int = 3) -> list[dict]:
+    """Rank actionable BUY candidates by confluence score (volume + trend + day return)."""
+    scored = []
+    for n in notable:
+        verdict, _ = _action_verdict(n)
+        if verdict != "BUY":
+            continue
+        vr = n.get("volume_ratio_20d") or 0
+        mad = n.get("ma200_distance_pct") or 0
+        day = n.get("day_change_pct", 0)
+        # Confluence: volume thrust + uptrend bonus + day return
+        score = vr * 2 + (1 if mad > 5 else 0) * 3 + day * 0.5
+        if n.get("pattern") == "GAP_FILL_BULL":
+            score += 2  # reversal premium
+        scored.append({**n, "_confluence": round(score, 2)})
+    scored.sort(key=lambda x: -x["_confluence"])
+    return scored[:top_n]
+
+
 def _entry_plan(record: dict) -> str | None:
     """Entry/SL plan trend-aware. Smart money rule: jangan kejar breakout di
     downtrend. Volume kering = setup tidak valid. Counter-trend hanya kalau ada
@@ -360,15 +424,14 @@ def build_gap_radar_text() -> str:
     total_scanned = (ihsg or {}).get("_total_scanned", 0)
     from app.core.config import settings as _s
     uni_label = {"lq45": "LQ45", "kompas100": "KOMPAS100", "combined": "LQ45+K100"}.get(_s.UNIVERSE.lower(), _s.UNIVERSE.upper())
-    lines = [f"*GAP RADAR · {uni_label}*"]
-    lines.append(f"_EOD {data_date} · upd {datetime.utcnow().strftime('%H:%M UTC')}_")
+    lines = [f"*GAP RADAR · {data_date}*"]
     lines.append("")
 
     if ihsg and ihsg.get("date"):
         day_pct = ihsg.get("day_change_pct", 0)
         sign = "+" if day_pct > 0 else ""
         lines.append(
-            f"*IHSG* gap {ihsg['gap_pct']:+.2f}% · close `{ihsg['close']:,.0f}` · day {sign}{day_pct:.2f}%"
+            f"*IHSG* {sign}{day_pct:.2f}% (closing) · gap pembukaan {ihsg['gap_pct']:+.2f}%"
         )
 
     counts = {p: sum(1 for n in notable if n["pattern"] == p) for p in PATTERN_META}
@@ -378,7 +441,7 @@ def build_gap_radar_text() -> str:
     bear_pct = bearish * 100 / total_scanned if total_scanned else 0
     breadth_label = "BULLISH" if bull_pct > bear_pct * 1.5 else "BEARISH" if bear_pct > bull_pct * 1.5 else "MIXED"
     lines.append(
-        f"*Breadth* {bullish}/{bearish} dari {total_scanned} → *{breadth_label}*"
+        f"Market: *{breadth_label}* · {bullish} bullish vs {bearish} bearish dari {total_scanned} saham"
     )
     lines.append("")
 
@@ -386,22 +449,52 @@ def build_gap_radar_text() -> str:
         lines.append("_Tidak ada saham dengan pola gap notable. Market tenang._")
         return "\n".join(lines)
 
-    def _row(n: dict, emoji: str) -> list[str]:
-        """Compact 1 line per ticker — no emoji noise."""
+    def _row(n: dict, pat: str) -> list[str]:
+        """Plain language 2-3 baris per saham: kondisi + close + verdict+plan."""
         day = n.get("day_change_pct", 0)
+        gap = n.get("gap_pct", 0)
         vr = n.get("volume_ratio_20d")
-        vol_tag = f" v{vr:.1f}x" if vr is not None else ""
         mad = n.get("ma200_distance_pct")
-        trend_tag = ""
+        sector_en = n.get("sector", "Unknown")
+        sector = SECTOR_ID.get(sector_en, sector_en)
+
+        # Deskripsi kondisi plain language
+        if pat == "GAP_FILL_BULL":
+            desc = f"rally *+{day:.1f}%* setelah gap turun {gap:.1f}%"
+        elif pat == "GAP_AND_GO":
+            desc = f"trend kuat *+{day:.1f}%* (gap up +{gap:.1f}% + follow-through)"
+        elif pat == "GAP_UP_FAIL":
+            desc = f"trap *{day:.1f}%* — gap up +{gap:.1f}% gagal continuation"
+        elif pat == "GAP_DN_CONT":
+            desc = f"jatuh *{day:.1f}%* — gap down {gap:.1f}% lanjut turun"
+        else:
+            desc = f"{day:+.1f}%"
+
+        # Context volume + trend
+        ctx = []
+        if vr is not None:
+            if vr >= 2.0:
+                ctx.append(f"vol *{vr:.1f}×* (institusi)")
+            elif vr >= 1.5:
+                ctx.append(f"vol {vr:.1f}× (kuat)")
+            elif vr < 0.7:
+                ctx.append(f"vol {vr:.1f}× (lemah)")
+            else:
+                ctx.append(f"vol {vr:.1f}×")
         if mad is not None:
             if mad > 5:
-                trend_tag = " up"
+                ctx.append("UPTREND")
             elif mad < -5:
-                trend_tag = " dn"
-        sector = n.get("sector", "")
-        sector_str = f" {sector[:5]}" if sector and sector != "Unknown" else ""
+                ctx.append("DOWNTREND")
+        if sector and sector != "—":
+            ctx.append(sector)
+
+        verdict, plan = _action_verdict(n)
+        v_label = {"BUY": "BUY", "WATCH": "WATCH", "AVOID": "AVOID"}[verdict]
         return [
-            f"`{n['ticker']:<5}` g{n['gap_pct']:+.1f}% d{day:+.1f}% c`{n['close']:,.0f}`{vol_tag}{trend_tag}{sector_str}"
+            f"• *{n['ticker']}* {desc}",
+            f"  close `{n['close']:,.0f}` · " + " · ".join(ctx),
+            f"  → *{v_label}* {plan}" if plan else f"  → *{v_label}*",
         ]
 
     order = ["GAP_FILL_BULL", "GAP_AND_GO", "GAP_UP_FAIL", "GAP_DN_CONT"]
@@ -412,38 +505,54 @@ def build_gap_radar_text() -> str:
         meta = PATTERN_META[pat]
         group.sort(key=meta["sort_key"])
         wr = stats.get(pat, {})
-        wr_str = f" · win {wr['win_rate_pct']:.0f}% n={wr['n']}" if wr.get("n") else ""
-        lines.append(f"*{meta['title']}*{wr_str}")
-        sector_groups: dict[str, int] = {}
-        for n in group:
-            sec = n.get("sector", "Unknown")
-            sector_groups[sec] = sector_groups.get(sec, 0) + 1
-        top_sec = sorted(sector_groups.items(), key=lambda x: -x[1])
-        cluster = ", ".join(f"{s} {c}" for s, c in top_sec[:3] if c >= 2)
-        if cluster:
-            lines.append(f"_rotation: {cluster}_")
-        for n in group[:8]:
-            lines.extend(_row(n, meta["row_emoji"]))
-        if len(group) > 8:
-            lines.append(f"_+{len(group) - 8} more · web /gap_")
+        section_titles = {
+            "GAP_FILL_BULL": "BOTTOM REVERSAL — kandidat BUY",
+            "GAP_AND_GO": "MOMENTUM CONTINUATION — trend follow",
+            "GAP_UP_FAIL": "EXHAUSTION TRAP — HINDARI",
+            "GAP_DN_CONT": "BEARISH CONTINUATION — HINDARI",
+        }
+        title = section_titles.get(pat, meta["title"])
+        wr_str = f" · win historis {wr['win_rate_pct']:.0f}% (n={wr['n']})" if wr.get("n") else ""
+        lines.append(f"━━━ *{title}* ━━━{wr_str}")
+        for n in group[:5]:  # max 5 per section supaya tidak overflow
+            lines.extend(_row(n, pat))
+        if len(group) > 5:
+            lines.append(f"_+{len(group) - 5} saham lain · lihat web /gap_")
         lines.append("")
 
-    fill_bull = [n for n in notable if n["pattern"] == "GAP_FILL_BULL"]
+    # === TOP PICKS — APA YANG HARUS DIBELI ===
+    picks = _top_picks(notable, top_n=3)
     up_fail = [n for n in notable if n["pattern"] == "GAP_UP_FAIL"]
-    notes = []
-    if fill_bull:
-        top = max(fill_bull, key=lambda x: x["day_change_pct"])
-        notes.append(f"best reversal: *{top['ticker']}* d{top['day_change_pct']:+.1f}%")
+    lines.append("━━━ *APA YANG HARUS DIBELI HARI INI* ━━━")
+    if not picks:
+        lines.append("_Tidak ada kandidat BUY yang lolos confluence. Sabar — jangan trade paksa._")
+    else:
+        for i, p in enumerate(picks, 1):
+            sector = SECTOR_ID.get(p.get("sector", "Unknown"), p.get("sector", "—"))
+            _, plan = _action_verdict(p)
+            reasons = []
+            if p["pattern"] == "GAP_FILL_BULL":
+                reasons.append(f"reversal rally +{p['day_change_pct']:.1f}%")
+            elif p["pattern"] == "GAP_AND_GO":
+                reasons.append(f"momentum trend +{p['day_change_pct']:.1f}%")
+            vr = p.get("volume_ratio_20d") or 0
+            if vr >= 1.5:
+                reasons.append(f"volume {vr:.1f}× kuat")
+            mad = p.get("ma200_distance_pct") or 0
+            if mad > 5:
+                reasons.append("uptrend MA200")
+            lines.append(f"*{i}. {p['ticker']}* ({sector}) — *BUY*")
+            lines.append(f"   {plan}")
+            lines.append(f"   _Alasan: {', '.join(reasons)}_")
+
     if up_fail:
-        top = min(up_fail, key=lambda x: x["day_change_pct"])
-        notes.append(f"worst trap: *{top['ticker']}* d{top['day_change_pct']:+.1f}% — avoid")
-    if notes:
-        lines.append("*Notes*")
-        for n in notes:
-            lines.append(n)
+        worst = min(up_fail, key=lambda x: x["day_change_pct"])
         lines.append("")
-    lines.append("_legend: g=gap, d=day, c=close, v=vol×MA20, up/dn=MA200 trend_")
-    lines.append("_cross-check vol & foreign flow di RTI sebelum entry._")
+        lines.append(f"*HINDARI*: `{worst['ticker']}` (gap up trap, distribusi smart money {worst['day_change_pct']:+.1f}%)")
+
+    lines.append("")
+    lines.append("_⚠️ Data EOD — eksekusi besok pagi. Cross-check volume real-time & foreign flow di RTI/Stockbit sebelum order._")
+    lines.append("_Bukan rekomendasi investasi. Disiplin SL = sacred._")
     return "\n".join(lines)
 
 
