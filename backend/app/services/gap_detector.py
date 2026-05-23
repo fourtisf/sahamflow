@@ -29,11 +29,8 @@ def compute_overnight_gap(db: Session, ticker: str) -> dict | None:
     """Return latest gap analysis or None if data insufficient.
 
     {
-      'gap_pct': float (-100..+100, sign = direction),
-      'severity': 'normal' | 'moderate' | 'large' | 'extreme',
-      'direction': 'up' | 'down' | 'flat',
-      'interpretation': str (human-readable smart-money note),
-      'open': float, 'prev_close': float, 'date': str,
+      'gap_pct', 'severity', 'direction', 'interpretation',
+      'open', 'prev_close', 'close', 'day_change_pct', 'date',
     }
     """
     rows = (
@@ -55,7 +52,9 @@ def compute_overnight_gap(db: Session, ticker: str) -> dict | None:
 
     open_ = float(today.open)
     prev_close = float(yesterday.close)
+    close = float(today.close) if today.close else open_
     gap_pct = round((open_ / prev_close - 1) * 100, 2)
+    day_change_pct = round((close / prev_close - 1) * 100, 2)
 
     abs_g = abs(gap_pct)
     if abs_g < 1.0:
@@ -79,6 +78,8 @@ def compute_overnight_gap(db: Session, ticker: str) -> dict | None:
         "interpretation": interpretation,
         "open": open_,
         "prev_close": prev_close,
+        "close": close,
+        "day_change_pct": day_change_pct,
         "date": str(today.date),
     }
 
@@ -99,7 +100,9 @@ def compute_ihsg_gap() -> dict | None:
         return None
     open_ = float(today["open"])
     prev_close = float(yesterday["close"])
+    close = float(today.get("close") or open_)
     gap_pct = round((open_ / prev_close - 1) * 100, 2)
+    day_change_pct = round((close / prev_close - 1) * 100, 2)
     abs_g = abs(gap_pct)
     if abs_g < 0.5:
         severity, direction = "normal", "flat"
@@ -118,6 +121,8 @@ def compute_ihsg_gap() -> dict | None:
         "direction": direction,
         "open": open_,
         "prev_close": prev_close,
+        "close": close,
+        "day_change_pct": day_change_pct,
         "date": today["date"],
     }
 
@@ -193,37 +198,51 @@ def build_gap_radar_text() -> str:
 
     ihsg, notable = scan_universe_gaps()
 
+    data_date = ihsg["date"] if ihsg else "?"
     lines = ["📊 *GAP RADAR — IDX LQ45*"]
-    lines.append(f"_Updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}_")
+    lines.append(f"_Data EOD: *{data_date}*  ·  Updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}_")
+    lines.append("_Gap = open hari ini vs close hari sebelumnya. Close = penutupan terakhir._")
     lines.append("")
 
     if ihsg:
         emoji = "📈" if ihsg["direction"] == "up" else "📉" if ihsg["direction"] == "down" else "➖"
-        lines.append(f"{emoji} *IHSG* : {ihsg['gap_pct']:+.2f}% ({ihsg['severity']})")
+        day_pct = ihsg.get("day_change_pct", 0)
+        day_emoji = "🟢" if day_pct > 0 else "🔴" if day_pct < 0 else "⚪"
+        lines.append(
+            f"{emoji} *IHSG* gap {ihsg['gap_pct']:+.2f}% ({ihsg['severity']})  ·  "
+            f"close `{ihsg['close']:,.2f}`  ·  day {day_emoji} {day_pct:+.2f}%"
+        )
     else:
         lines.append("➖ *IHSG* : data tidak tersedia")
     lines.append("")
 
     if not notable:
-        lines.append("_Tidak ada saham dengan gap notable hari ini. Market tenang._")
+        lines.append("_Tidak ada saham dengan gap notable. Market tenang._")
         return "\n".join(lines)
 
-    # Split by direction
     gap_up = [n for n in notable if n["direction"] == "up"]
     gap_down = [n for n in notable if n["direction"] == "down"]
+
+    def _row(n: dict, sev_emoji: str) -> str:
+        day = n.get("day_change_pct", 0)
+        day_e = "🟢" if day > 0 else "🔴" if day < 0 else "⚪"
+        return (
+            f"  {sev_emoji} `{n['ticker']:<5}` gap {n['gap_pct']:+.2f}%  "
+            f"close `{n['close']:,.0f}`  day {day_e}{day:+.2f}%"
+        )
 
     if gap_up:
         lines.append("*━━ GAP UP ━━*")
         for n in gap_up[:15]:
             sev_emoji = "🔥" if n["severity"] == "extreme" else "⬆️" if n["severity"] == "large" else "↗️"
-            lines.append(f"  {sev_emoji} `{n['ticker']:<6}` {n['gap_pct']:+.2f}%  _({n['severity']})_")
+            lines.append(_row(n, sev_emoji))
         lines.append("")
 
     if gap_down:
         lines.append("*━━ GAP DOWN ━━*")
         for n in gap_down[:15]:
             sev_emoji = "💥" if n["severity"] == "extreme" else "⬇️" if n["severity"] == "large" else "↘️"
-            lines.append(f"  {sev_emoji} `{n['ticker']:<6}` {n['gap_pct']:+.2f}%  _({n['severity']})_")
+            lines.append(_row(n, sev_emoji))
         lines.append("")
 
     # Smart money takeaway
