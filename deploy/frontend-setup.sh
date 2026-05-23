@@ -37,8 +37,14 @@ sudo -u "${APP_USER}" bash -lc "
 env PATH="$PATH:/usr/bin" pm2 startup systemd -u "${APP_USER}" --hp "/home/${APP_USER}" | tail -1 | bash || true
 
 echo ">> Refreshing Nginx (frontend + /api proxy)..."
-cp "${APP_DIR}/deploy/nginx-sahamflow.conf" /etc/nginx/sites-available/sahamflow
-ln -sf /etc/nginx/sites-available/sahamflow /etc/nginx/sites-enabled/sahamflow
+# Don't clobber certbot's 443 block. Once /etc/letsencrypt/live/<domain> exists,
+# leave the live config alone and just reload.
+if [ -d /etc/letsencrypt/live/sahamflow.com ]; then
+  echo "   certbot TLS config detected, preserving it (skipping cp)."
+else
+  cp "${APP_DIR}/deploy/nginx-sahamflow.conf" /etc/nginx/sites-available/sahamflow
+  ln -sf /etc/nginx/sites-available/sahamflow /etc/nginx/sites-enabled/sahamflow
+fi
 nginx -t && systemctl reload nginx
 
 echo ""
