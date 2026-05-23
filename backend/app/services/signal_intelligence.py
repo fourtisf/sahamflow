@@ -125,7 +125,7 @@ def build_intel(db: Session, ticker: str) -> dict | None:
     )
     bandar = bandar_detector.detect(df, foreign_5d)
     ff = foreign_flow_analyzer.analyze(list(df["foreign_net"]))
-    smp = smart_money_proxy.score_ticker(df, breakdown, bandar)
+    smp = smart_money_proxy.score_ticker(df, breakdown, bandar, regime_modifier=modifier_early)
 
     last_close = float(df["close"].iloc[-1])
 

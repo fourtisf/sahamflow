@@ -183,7 +183,7 @@ def generate_signals(tickers: list[str] | None = None, on: date | None = None) -
             ff = foreign_flow_analyzer.analyze(list(df["foreign_net"]))
             breakdown_for_smp = technical_analysis.indicator_breakdown(df)
             from app.services import smart_money_proxy
-            smp = smart_money_proxy.score_ticker(df, breakdown_for_smp, bandar)
+            smp = smart_money_proxy.score_ticker(df, breakdown_for_smp, bandar, regime_modifier=modifier)
 
             stmt = insert(SignalCache).values(
                 ticker=t,
