@@ -49,6 +49,15 @@ const parseNum = (s: string) => parseInt(String(s).replace(/[^0-9]/g, ""), 10) |
 const fmtID = (n: number) => Math.round(n).toLocaleString("id-ID");
 const fmtJt = (n: number) => (n / 1e6).toFixed(1) + "jt";
 
+function phaseTooltip(phase?: string | null) {
+  const p = (phase || "").toLowerCase();
+  if (p.startsWith("accum")) return "ACCUMULATION (Wyckoff fase 1): smart money diam-diam beli di harga rendah, harga sideways. Setup awal bullish.";
+  if (p.startsWith("markup")) return "MARKUP (Wyckoff fase 2): tren naik aktif, retail mulai sadar. Setup trend-following bullish.";
+  if (p.startsWith("distrib")) return "DISTRIBUTION (Wyckoff fase 3): smart money jualan di puncak, harga sideways di atas. Warning bearish.";
+  if (p.startsWith("markd")) return "MARKDOWN (Wyckoff fase 4): harga dijatuhkan, smart money sudah keluar. Bearish — atau kapitulasi kalau dekat bottom.";
+  return "";
+}
+
 function phaseClass(phase?: string | null) {
   const p = (phase || "").toLowerCase();
   if (p.startsWith("markup")) return "ph-mk";
@@ -297,8 +306,8 @@ export default function Dashboard() {
                     <tr key={w.ticker} onClick={() => selectStock(w.ticker)}>
                       <td className="n">{i + 1}</td>
                       <td className="sym">{w.ticker}</td>
-                      <td className="r mono">{w.meta ? fmtID(w.meta.price) : "—"}</td>
-                      <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`}>{w.live?.bandar_phase || "—"}</span></td>
+                      <td className="r mono">{(w.live?.indicators as any)?.last_close ? fmtID((w.live?.indicators as any).last_close) : (w.meta ? fmtID(w.meta.price) : "—")}</td>
+                      <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`} title={phaseTooltip(w.live?.bandar_phase)}>{w.live?.bandar_phase || "—"}</span></td>
                       <td className={`scl ${scoreClass(w.live?.bandar_score)} mono`}>{w.live?.bandar_score ?? "—"}</td>
                     </tr>
                   ))}
@@ -378,10 +387,10 @@ GET /api/v1/backtest?ticker=BBCA&min_score=0.3
                     <tr key={w.ticker} onClick={() => selectStock(w.ticker)}>
                       <td className="n">{i + 1}</td>
                       <td className="sym">{w.ticker}</td>
-                      <td className="r mono">{w.meta ? fmtID(w.meta.price) : "—"}</td>
+                      <td className="r mono">{(w.live?.indicators as any)?.last_close ? fmtID((w.live?.indicators as any).last_close) : (w.meta ? fmtID(w.meta.price) : "—")}</td>
                       <td className={`r mono ${(w.live?.composite_score ?? 0) >= 0 ? "up" : "dn"}`}>{w.live?.composite_score ?? "—"}</td>
                       <td className={`r mono ${bandarScoreClass(w.live?.bandar_score, w.live?.bandar_phase)}`}>{w.live?.bandar_score ?? "—"}</td>
-                      <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`}>{w.live?.bandar_phase || "—"}</span></td>
+                      <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`} title={phaseTooltip(w.live?.bandar_phase)}>{w.live?.bandar_phase || "—"}</span></td>
                       <td className={`r mono ${((w.live?.indicators as any)?.smart_money_score ?? 0) >= 20 ? "up" : ((w.live?.indicators as any)?.smart_money_score ?? 0) <= -20 ? "dn" : "fl"}`}>{(w.live?.indicators as any)?.smart_money_score ?? "—"}</td>
                       <td className="r mono">{((w.live?.indicators as any)?.quality_score ?? w.meta?.qlty) ?? "—"}</td>
                       <td><span className={`sg ${(w.live?.composite_score ?? 0) >= 0.2 ? "sg-b" : (w.live?.composite_score ?? 0) <= -0.2 ? "sg-s" : "sg-h"}`}>{w.live?.signal || "—"}</span></td>

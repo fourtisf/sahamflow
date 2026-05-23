@@ -106,8 +106,8 @@ def scan_ticker(df: pd.DataFrame) -> dict | None:
         score += 10
 
     score = min(100, score)
-    if score < 30:
-        return None
+    if score < 15:
+        return None  # threshold dilonggarkan supaya kandidat tetap muncul
 
     return {
         "score": score,
@@ -118,9 +118,19 @@ def scan_ticker(df: pd.DataFrame) -> dict | None:
     }
 
 
-def scan_universe(db: Session, top_n: int = 15) -> list[dict]:
+def scan_universe(db: Session, top_n: int = 20) -> list[dict]:
+    """Scan SEMUA ticker yang punya OHLCV di DB (bukan hanya LQ45 hardcoded).
+
+    Includes saham yang user pernah klik (lazy-fetched dari yfinance).
+    Threshold longgar (>=15) supaya kandidat tetap muncul saat market belum
+    extreme oversold.
+    """
+    from app.models import OHLCVDaily
+    from sqlalchemy import select, distinct
+
+    tickers = db.execute(select(distinct(OHLCVDaily.ticker))).scalars().all()
     out: list[dict] = []
-    for t in settings.universe:
+    for t in tickers:
         df = load_ohlcv_df(db, t)
         result = scan_ticker(df)
         if result:

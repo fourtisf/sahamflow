@@ -197,6 +197,7 @@ def generate_signals(tickers: list[str] | None = None, on: date | None = None) -
                     "smart_money_label": smp["label"],
                     "quality_score": quality.get("score"),
                     "quality_tier": quality.get("tier"),
+                    "last_close": float(df["close"].iloc[-1]),
                 },
                 foreign_signal=ff.get("signal") if ff.get("has_data") else None,
                 bandar_phase=bandar["phase"],
