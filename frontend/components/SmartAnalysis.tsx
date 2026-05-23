@@ -192,6 +192,13 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
           </>
         )}
 
+        {/* Structural warning when Sell signal conflicts with proven support */}
+        {intel.structural_warning && (
+          <div className="alrt alrt-w" style={{ marginTop: 12 }}>
+            <b>⚠ STRUCTURAL WARNING:</b> {intel.structural_warning}
+          </div>
+        )}
+
         {/* Alternate setup overlay — smart money flip at bottoms */}
         {intel.alternate_setup && (
           <div

@@ -208,6 +208,14 @@ def indicator_breakdown(df: pd.DataFrame) -> dict:
         if vol is not None
         else None
     )
+    # Structural: swing low/high 60D — model harus tahu DI MANA harga vs range
+    win = df.tail(60)
+    swing_low = float(win["low"].min()) if "low" in win else float(win["close"].min())
+    swing_high = float(win["high"].max()) if "high" in win else float(win["close"].max())
+    range_position_pct = (
+        round((last - swing_low) / (swing_high - swing_low) * 100, 1)
+        if swing_high > swing_low else 50.0
+    )
     return {
         "rsi14": round(r, 2),
         "macd_hist": round(float(hist.iloc[-1]), 4),
@@ -221,13 +229,24 @@ def indicator_breakdown(df: pd.DataFrame) -> dict:
         "atr14": round(atr14, 2) if atr14 else None,
         "atr_pct": round(atr14 / last * 100, 2) if atr14 and last else None,
         "adv_value_idr_20d": int(adv_value_20d) if adv_value_20d else None,
+        "swing_low_60d": round(swing_low, 2),
+        "swing_high_60d": round(swing_high, 2),
+        "range_position_pct": range_position_pct,
     }
 
 
-def execution_levels(last_close: float, atr_value: float | None, bias: str) -> dict | None:
-    """Volatility-aware entry/SL/TP using ATR, with R:R = 1:3.
+def execution_levels(
+    last_close: float,
+    atr_value: float | None,
+    bias: str,
+    swing_low: float | None = None,
+    swing_high: float | None = None,
+) -> dict | None:
+    """Volatility-aware entry/SL/TP using ATR, R:R 1:3, clamped at structural S/R.
 
-    bias='long' / 'short'. Returns None if ATR unavailable.
+    Kalau swing_low/swing_high diberikan, TP tidak boleh proyeksi melebihi level
+    itu — formula 6×ATR linear sering absurd (mis. ANTM di support malah
+    diproyeksikan -40%). Clamp ini memaksa model menghormati struktur chart.
     """
     if not atr_value or atr_value <= 0:
         return None
@@ -235,15 +254,25 @@ def execution_levels(last_close: float, atr_value: float | None, bias: str) -> d
     tp_dist = 6 * atr_value
     if bias == "short":
         sl, tp = last_close + sl_dist, last_close - tp_dist
+        if swing_low is not None and tp < swing_low:
+            tp = swing_low  # JANGAN proyeksi short menembus support proven
     else:
         sl, tp = last_close - sl_dist, last_close + tp_dist
+        if swing_high is not None and tp > swing_high:
+            tp = swing_high  # cap di resistance proven
+    real_tp_dist = abs(tp - last_close)
     return {
         "entry": round(last_close, 2),
         "stop_loss": round(sl, 2),
         "take_profit": round(tp, 2),
         "risk_pct": round(sl_dist / last_close * 100, 2),
-        "reward_pct": round(tp_dist / last_close * 100, 2),
-        "rr_ratio": 3.0,
+        "reward_pct": round(real_tp_dist / last_close * 100, 2),
+        "rr_ratio": round(real_tp_dist / sl_dist, 2) if sl_dist else 0,
+        "tp_clamped_at_structure": (
+            swing_low is not None and tp == swing_low and bias == "short"
+        ) or (
+            swing_high is not None and tp == swing_high and bias == "long"
+        ),
     }
 
 

@@ -92,7 +92,13 @@ def build_intel(db: Session, ticker: str) -> dict | None:
 
     last_close = float(df["close"].iloc[-1])
     bias = _bias_from_score(score)
-    levels = technical_analysis.execution_levels(last_close, breakdown.get("atr14"), bias)
+    levels = technical_analysis.execution_levels(
+        last_close,
+        breakdown.get("atr14"),
+        bias,
+        swing_low=breakdown.get("swing_low_60d"),
+        swing_high=breakdown.get("swing_high_60d"),
+    )
 
     regime_row = db.execute(
         select(RegimeHistory).order_by(RegimeHistory.date.desc()).limit(1)
@@ -132,47 +138,90 @@ def build_intel(db: Session, ticker: str) -> dict | None:
     # reversal kuat, smart money justru AKUMULASI. Kami buat alternate setup
     # eksplisit supaya user tidak dipaksa Sell di bottom.
     intel["alternate_setup"] = _maybe_reversal_overlay(df, intel, breakdown, db, ticker)
+
+    # Structural warning: composite Sell di support proven = setup buruk
+    if score < -0.2:
+        rp = breakdown.get("range_position_pct")
+        if rp is not None and rp < 25:
+            intel["structural_warning"] = (
+                f"Composite menyarankan Sell, tapi harga berada di {rp}% range 60D "
+                f"(dekat swing low {breakdown.get('swing_low_60d')}). Short di support "
+                f"proven = high risk. Pertimbangkan Reversal Long overlay atau tunggu "
+                f"breakdown jelas di bawah {breakdown.get('swing_low_60d')}."
+            )
     return intel
 
 
 def _maybe_reversal_overlay(df, intel, breakdown, db, ticker):
-    """Jika kondisi mendukung Buy reversal, kembalikan overlay setup; else None."""
-    # Cek regime: harus dalam fase yang mendukung bottom-fishing
+    """Jika kondisi mendukung Buy reversal, kembalikan overlay setup; else None.
+
+    Triggers (longgar — supaya kasus ANTM tidak terlewat):
+      A. Regime modifier = Potential Accumulation, ATAU
+      B. RSI < 35 (oversold) DAN harga di bottom 25% range 60D (structural support).
+    Plus salah satu: reversal_score >= 30 ATAU range_position < 15 (sangat dekat
+    swing low).
+    """
     regime_row = db.execute(
         select(RegimeHistory).order_by(RegimeHistory.date.desc()).limit(1)
     ).scalar_one_or_none()
     regime_extra = regime_row.extra if regime_row else {}
     modifier = (regime_extra or {}).get("modifier") if isinstance(regime_extra, dict) else None
-    if modifier not in {"Potential Accumulation"}:
-        return None
 
-    # Saham harus oversold (bukan sembarang)
     rsi = breakdown.get("rsi14") or 50
-    if rsi >= 35:
+    range_pos = breakdown.get("range_position_pct")
+    at_structural_support = range_pos is not None and range_pos < 25
+
+    regime_supports = modifier == "Potential Accumulation"
+    oversold_at_support = rsi < 40 and at_structural_support
+
+    if not (regime_supports or oversold_at_support):
+        return None
+    if rsi >= 45:  # tidak mungkin reversal kalau RSI sudah netral-bullish
         return None
 
-    # Cek reversal signature score
     rev = reversal_scanner.scan_ticker(df)
-    if not rev or rev["score"] < 40:
+    rev_score = rev["score"] if rev else 0
+    rev_sigs = rev["signatures"] if rev else []
+
+    # Pemicu tambahan: range position sangat rendah (di support) atau signature kuat
+    if rev_score < 30 and (range_pos is None or range_pos >= 15):
         return None
 
-    # Bangun setup long pakai ATR (sama formula seperti levels normal)
     last = float(df["close"].iloc[-1])
     atr = breakdown.get("atr14") or 0
     if atr <= 0:
         return None
-    levels = technical_analysis.execution_levels(last, atr, bias="long")
+    levels = technical_analysis.execution_levels(
+        last, atr, bias="long",
+        swing_low=breakdown.get("swing_low_60d"),
+        swing_high=breakdown.get("swing_high_60d"),
+    )
+
+    # Rationale yang spesifik konteks
+    parts = []
+    if regime_supports:
+        parts.append(f"regime {modifier}")
+    if at_structural_support:
+        parts.append(f"harga {range_pos}% range 60D — dekat swing low {breakdown.get('swing_low_60d')}")
+    if rsi < 35:
+        parts.append(f"RSI {rsi} oversold")
+    if rev_sigs:
+        parts.append(f"signature: {', '.join(rev_sigs[:3])}")
 
     return {
         "bias": "long",
-        "rationale": "REVERSAL LONG — regime Potential Accumulation + oversold + signature pembalikan.",
-        "reversal_score": rev["score"],
-        "signatures": rev["signatures"],
+        "rationale": "REVERSAL LONG — " + " · ".join(parts) + ".",
+        "reversal_score": rev_score,
+        "signatures": rev_sigs,
+        "range_position_pct": range_pos,
+        "swing_low_60d": breakdown.get("swing_low_60d"),
+        "swing_high_60d": breakdown.get("swing_high_60d"),
         "levels": levels,
         "rules": [
-            "Konfirmasi: tunggu close > entry breakout dengan volume ≥ 1.5× rata-rata.",
-            f"Invalidation: setup batal jika close < {levels['stop_loss']} (2× ATR).",
-            "Setup ini override sinyal trend-following composite — jangan ambil Sell.",
-            "Scaling: 1/3 saat trigger, 1/3 saat RSI menembus 40 (momentum kembali), 1/3 di +1R.",
+            f"Target struktural: gap fill / resistance proven {breakdown.get('swing_high_60d')}.",
+            f"Setup batal jika close < {levels['stop_loss']} (2× ATR) atau menembus swing low.",
+            "Setup ini override sinyal trend-following composite — jangan ambil Sell di support proven.",
+            "Konfirmasi: green close + volume ≥ 1.2× rata-rata 20D (lebih longgar dari trend trade).",
+            "Scaling: 1/3 saat green close konfirmasi, 1/3 saat RSI > 40, 1/3 di +1R. Trail di breakeven setelah +1R.",
         ],
     }

@@ -82,6 +82,9 @@ export interface StockIntel {
     rationale: string;
     reversal_score: number;
     signatures: string[];
+    range_position_pct?: number;
+    swing_low_60d?: number;
+    swing_high_60d?: number;
     levels: {
       entry: number;
       stop_loss: number;
@@ -89,9 +92,11 @@ export interface StockIntel {
       risk_pct: number;
       reward_pct: number;
       rr_ratio: number;
+      tp_clamped_at_structure?: boolean;
     } | null;
     rules: string[];
   } | null;
+  structural_warning?: string;
 }
 
 export interface PortfolioRisk {
