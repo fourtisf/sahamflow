@@ -89,6 +89,23 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
         <Stat label="Bandar" value={intel.bandar.phase} hint={`vol× ${fmt(intel.bandar.vol_ratio ?? null, 2)} · estimasi`} />
       </div>
 
+      {/* Quality tier + mode badge — bluechip exception + dynamic composite */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderTop: "1px solid var(--line)", background: "var(--bg2)", fontSize: 10.5, color: "var(--tx2)" }}>
+        {intel.quality && intel.quality.tier !== "UNKNOWN" && (
+          <span>
+            <b style={{ color: intel.quality.tier === "BLUE CHIP" ? "var(--gold)" : intel.quality.tier === "STANDARD" ? "var(--cy)" : "var(--amb)" }}>
+              {intel.quality.tier}
+            </b>{" "}
+            ({intel.quality.score}/100) · threshold AVOID = {intel.avoid_threshold}
+          </span>
+        )}
+        {intel.indicators && (intel.indicators as any).composite_mode && (
+          <span style={{ marginLeft: "auto", color: "var(--tx3)" }}>
+            Composite mode: <b className="gd">{(intel.indicators as any).composite_mode}</b>
+          </span>
+        )}
+      </div>
+
       {/* AVOID/EXIT banner — long-only friendly, no short setup shown */}
       {intel.bias === "avoid" && (
         <div className="pnl-b" style={{ background: "rgba(255,71,87,0.08)", borderTop: "1px solid var(--red)" }}>

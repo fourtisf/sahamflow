@@ -154,11 +154,26 @@ def generate_signals(tickers: list[str] | None = None, on: date | None = None) -
     on = on or date.today()
     summary: dict[str, float] = {}
     with SessionLocal() as db:
+        # Regime-aware composite mode: ambil modifier terakhir, pakai mean-reversion
+        # untuk bottom-fishing regimes.
+        regime_last = db.execute(
+            select(RegimeHistory).order_by(RegimeHistory.date.desc()).limit(1)
+        ).scalar_one_or_none()
+        modifier = (
+            (regime_last.extra or {}).get("modifier")
+            if regime_last and isinstance(regime_last.extra, dict) else None
+        )
+        composite_mode = (
+            "reversion"
+            if modifier in {"Potential Accumulation", "Markdown Capitulation"}
+            else "trend"
+        )
+
         for t in tickers:
             df = load_ohlcv_df(db, t)
             if df.empty or len(df) < 20:
                 continue
-            score, indicators = technical_analysis.composite_score(df)
+            score, indicators = technical_analysis.composite_score(df, mode=composite_mode)
             foreign_5d = (
                 int(df["foreign_net"].dropna().tail(5).sum())
                 if df["foreign_net"].notna().any()

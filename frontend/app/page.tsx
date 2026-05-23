@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IhsgChart, EquityChart } from "@/components/Charts";
+import { PortfolioBacktest } from "@/components/PortfolioBacktest";
 import { PortfolioRiskPanel } from "@/components/PortfolioRisk";
 import { ReversalCandidates } from "@/components/ReversalCandidates";
 import { SmartAnalysis } from "@/components/SmartAnalysis";
@@ -353,9 +354,10 @@ export default function Dashboard() {
         )}
 
         {/* BACKTEST */}
+        {show("backtest") && <PortfolioBacktest />}
         {show("backtest") && (
           <div className="pnl sec">
-            <div className="pnl-h"><span className="pnl-t">Backtest Engine</span><span className="pnl-n">Per-saham · IDX cost 0.6%</span></div>
+            <div className="pnl-h"><span className="pnl-t">Backtest Engine (per-saham)</span><span className="pnl-n">Per-saham · IDX cost 0.6%</span></div>
             <div className="pnl-b">
               <div className="alrt alrt-i"><b>► CARA PAKAI:</b> Backtest live per saham (walk-forward, cost included). Panggil endpoint:</div>
               <pre style={{ background: "var(--bg2)", padding: 12, borderRadius: 8, fontSize: 11, color: "var(--gold)", overflowX: "auto" }}>

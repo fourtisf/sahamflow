@@ -13,15 +13,30 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-WEIGHTS = {
+WEIGHTS_TREND = {
+    # Bobot momentum-dominant — dipakai saat regime Risk-On / netral.
     "rsi": 0.15,
     "macd": 0.15,
-    "volume": 0.20,  # heaviest weight for IDX stocks (bandar-driven)
+    "volume": 0.20,
     "ma": 0.15,
     "stoch_rsi": 0.15,
     "psar": 0.10,
     "bb": 0.10,
 }
+WEIGHTS_REVERSION = {
+    # Bobot mean-reversion — dipakai saat regime modifier 'Potential Accumulation'
+    # atau 'Markdown Capitulation'. Mean-reversion indikator (RSI/StochRSI/BB)
+    # dapat polaritas FLIP (lihat *_signal_reversion) dan bobot lebih besar.
+    "rsi": 0.22,
+    "macd": 0.08,
+    "volume": 0.18,
+    "ma": 0.08,
+    "stoch_rsi": 0.20,
+    "psar": 0.04,
+    "bb": 0.20,
+}
+# Default biar pemanggil lama tidak break (mis. test).
+WEIGHTS = WEIGHTS_TREND
 
 
 def _ema(s: pd.Series, span: int) -> pd.Series:
@@ -170,18 +185,63 @@ def bollinger_signal(df: pd.DataFrame) -> float:
     return _clip((pct_b - 0.5) * 2)
 
 
-def composite_score(ohlcv: pd.DataFrame) -> tuple[float, dict[str, float]]:
-    """Weighted composite of all indicator signals, in [-1, +1]."""
-    ind = {
-        "rsi": rsi_signal(ohlcv),
-        "macd": macd_signal(ohlcv),
-        "volume": volume_signal(ohlcv),
-        "ma": ma_alignment(ohlcv),
-        "stoch_rsi": stoch_rsi_signal(ohlcv),
-        "psar": psar_signal(ohlcv),
-        "bb": bollinger_signal(ohlcv),
-    }
-    score = sum(ind[k] * WEIGHTS[k] for k in WEIGHTS)
+def rsi_signal_reversion(df: pd.DataFrame) -> float:
+    """Mean-reversion: oversold (<35) bullish, overbought (>70) bearish.
+    Polaritas TERBALIK dari rsi_signal momentum."""
+    r = float(rsi(df["close"]).iloc[-1])
+    return _clip((50 - r) / 25)
+
+
+def stoch_rsi_signal_reversion(df: pd.DataFrame) -> float:
+    k = float(stoch_rsi(df["close"]).iloc[-1])
+    return _clip((0.5 - k) * 2)
+
+
+def bollinger_signal_reversion(df: pd.DataFrame) -> float:
+    """Bawah lower band = oversold bullish, atas upper = overbought bearish."""
+    upper, _mid, lower = bollinger(df["close"])
+    price = df["close"].iloc[-1]
+    u, lo = upper.iloc[-1], lower.iloc[-1]
+    if pd.isna(u) or u == lo:
+        return 0.0
+    pct_b = (price - lo) / (u - lo)
+    return _clip((0.5 - pct_b) * 2)
+
+
+def composite_score(
+    ohlcv: pd.DataFrame, mode: str = "trend"
+) -> tuple[float, dict[str, float]]:
+    """Weighted composite of indicator signals, in [-1, +1].
+
+    mode='trend' (default) → momentum-aligned (RSI tinggi = bullish).
+    mode='reversion'       → mean-reversion (RSI rendah/oversold = bullish).
+    Smart-money desk pakai 'reversion' saat regime modifier menandakan bottom
+    fishing (Potential Accumulation, Markdown Capitulation). 'trend' untuk
+    Risk-On atau netral.
+    """
+    if mode == "reversion":
+        ind = {
+            "rsi": rsi_signal_reversion(ohlcv),
+            "macd": macd_signal(ohlcv),
+            "volume": volume_signal(ohlcv),
+            "ma": ma_alignment(ohlcv),
+            "stoch_rsi": stoch_rsi_signal_reversion(ohlcv),
+            "psar": psar_signal(ohlcv),
+            "bb": bollinger_signal_reversion(ohlcv),
+        }
+        weights = WEIGHTS_REVERSION
+    else:
+        ind = {
+            "rsi": rsi_signal(ohlcv),
+            "macd": macd_signal(ohlcv),
+            "volume": volume_signal(ohlcv),
+            "ma": ma_alignment(ohlcv),
+            "stoch_rsi": stoch_rsi_signal(ohlcv),
+            "psar": psar_signal(ohlcv),
+            "bb": bollinger_signal(ohlcv),
+        }
+        weights = WEIGHTS_TREND
+    score = sum(ind[k] * weights[k] for k in weights)
     return _clip(score), ind
 
 

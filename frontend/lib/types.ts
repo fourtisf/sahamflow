@@ -82,6 +82,13 @@ export interface StockIntel {
     profit_factor: number;
   } | null;
   history: { date: string; close: number }[];
+  quality: {
+    score: number | null;
+    tier: "BLUE CHIP" | "STANDARD" | "JUNK / SPECULATIVE" | "UNKNOWN" | string;
+    drivers: Record<string, unknown>;
+    source: string;
+  } | null;
+  avoid_threshold: number;
   alternate_setup: {
     bias: "long" | "short";
     rationale: string;

@@ -15,6 +15,7 @@ from app.models import RegimeHistory
 from app.services import (
     bandar_detector,
     foreign_flow_analyzer,
+    fundamentals,
     reversal_scanner,
     technical_analysis,
     track_record,
@@ -97,9 +98,24 @@ def build_intel(db: Session, ticker: str) -> dict | None:
         if df.empty or len(df) < 20:
             return None
 
-    score, indicators_raw = technical_analysis.composite_score(df)
+    # Regime-aware composite mode: bottom-fishing regimes pakai mean-reversion.
+    regime_row_early = db.execute(
+        select(RegimeHistory).order_by(RegimeHistory.date.desc()).limit(1)
+    ).scalar_one_or_none()
+    modifier_early = (
+        (regime_row_early.extra or {}).get("modifier")
+        if regime_row_early and isinstance(regime_row_early.extra, dict)
+        else None
+    )
+    composite_mode = (
+        "reversion"
+        if modifier_early in {"Potential Accumulation", "Markdown Capitulation"}
+        else "trend"
+    )
+    score, indicators_raw = technical_analysis.composite_score(df, mode=composite_mode)
     label = technical_analysis.signal_label(score)
     breakdown = technical_analysis.indicator_breakdown(df)
+    breakdown["composite_mode"] = composite_mode
 
     foreign_5d = (
         int(df["foreign_net"].dropna().tail(5).sum())
@@ -110,7 +126,16 @@ def build_intel(db: Session, ticker: str) -> dict | None:
     ff = foreign_flow_analyzer.analyze(list(df["foreign_net"]))
 
     last_close = float(df["close"].iloc[-1])
-    bias = _bias_from_score(score)
+
+    # Quality-adjusted bias: bluechip threshold lebih longgar sebelum AVOID.
+    quality = fundamentals.get_quality(ticker)
+    avoid_threshold = fundamentals.avoid_threshold_for(quality.get("score"))
+    if score <= avoid_threshold and settings.MARKET_MODE == "long_only":
+        bias = "avoid"
+    elif score >= 0.2:
+        bias = "long"
+    else:
+        bias = "neutral"
     long_only = settings.MARKET_MODE == "long_only"
 
     # Hanya bangun execution_levels untuk LONG. Avoid/short tidak ada entry di IDX.
@@ -195,6 +220,8 @@ def build_intel(db: Session, ticker: str) -> dict | None:
         "avoid_reasons": avoid_reasons,
         "regime": {"name": regime_name, **conviction},
         "history": history,
+        "quality": quality,
+        "avoid_threshold": avoid_threshold,
     }
     # Execution discipline: trigger / invalidation / time stop.
     intel["triggers"] = triggers.derive_triggers(intel)
