@@ -36,8 +36,9 @@ export function ReversalCandidates({ active }: { active: boolean }) {
         <div className="pnl-b" style={{ color: "var(--tx3)" }}>Memindai universe…</div>
       ) : rows.length === 0 ? (
         <div className="pnl-b" style={{ color: "var(--tx3)", fontSize: 11 }}>
-          Tidak ada saham dengan skor reversal ≥ 30 saat ini. Scanner menilai: RSI/StochRSI oversold,
-          streak turun, reversal day, volume thrust di green close, bullish RSI divergence, gap closed.
+          Tidak ada saham dengan skor reversal ≥ 15 saat ini. Scanner menilai: RSI/StochRSI oversold,
+          streak turun ≥5D, reversal day setelah turun, volume thrust 1.5× di green close,
+          bullish RSI divergence, gap closed. Empty result = market tidak dalam fase oversold extreme.
         </div>
       ) : (
         <table className="dt">

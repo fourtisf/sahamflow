@@ -105,9 +105,18 @@ def scan_ticker(df: pd.DataFrame) -> dict | None:
         signatures.append(f"Gap closed (gap {gap['gap_date']} ke-fill)")
         score += 10
 
+    # Leading indicators — partial credit untuk setup yang BELUM sempurna
+    # Bantu kandidat marginal muncul saat market belum extreme oversold.
+    if 40 <= rsi_v < 50 and stoch < 0.4:
+        signatures.append(f"Pre-oversold (RSI {rsi_v:.0f}, StochRSI {stoch:.2f})")
+        score += 5
+    if streak >= 3 and streak < 5:
+        signatures.append(f"Streak turun {streak}D (early capitulation)")
+        score += 8
+
     score = min(100, score)
-    if score < 15:
-        return None  # threshold dilonggarkan supaya kandidat tetap muncul
+    if score < 10:
+        return None  # threshold longgar (10) untuk capture early-stage reversal
 
     return {
         "score": score,
