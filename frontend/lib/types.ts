@@ -61,4 +61,34 @@ export interface StockIntel {
     conviction_pct: number;
     note: string;
   };
+  triggers: {
+    trigger: Record<string, number | string>;
+    invalidation: { level: number; rule: string };
+    time_stop_bars: number;
+    rules: string[];
+  } | null;
+  track_record: {
+    setup: string;
+    n: number;
+    hit_rate_pct: number;
+    avg_win_pct: number;
+    avg_loss_pct: number;
+    expectancy_pct: number;
+    profit_factor: number;
+  } | null;
+}
+
+export interface PortfolioRisk {
+  account_size_idr: number;
+  open_positions: number;
+  total_value_idr: number;
+  total_risk_idr: number;
+  portfolio_heat_pct: number;
+  heat_limit_pct: number;
+  sector_concentration_pct: Record<string, number>;
+  sector_limit_pct: number;
+  max_correlation: number | null;
+  max_correlation_pair: [string, string] | null;
+  correlation_limit: number;
+  positions: { ticker: string; value_idr: number; risk_idr: number; sector: string | null }[];
 }

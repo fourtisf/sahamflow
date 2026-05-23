@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     UNIVERSE: str = "lq45"
     # SBN 10Y yield (%) — no clean Yahoo feed, so set manually when it moves.
     SBN_10Y: float | None = None
+    # Telegram alerts for high-conviction setups (optional).
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
+    # Portfolio risk defaults (IDR)
+    ACCOUNT_SIZE_IDR: int = 500_000_000
     DATABASE_URL: str = "postgresql+psycopg://sahamflow:sahamflow@localhost:5432/sahamflow"
     REDIS_URL: str = "redis://localhost:6379/0"
 

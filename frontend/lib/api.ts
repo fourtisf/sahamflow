@@ -1,4 +1,4 @@
-import type { RegimeResponse, ScreenerRow, StockIntel } from "./types";
+import type { PortfolioRisk, RegimeResponse, ScreenerRow, StockIntel } from "./types";
 
 // Default to a relative path so the same build works behind Nginx (which proxies
 // /api -> backend:8000). Override with NEXT_PUBLIC_API_URL for local dev.
@@ -31,5 +31,6 @@ export const api = {
   sectorRotation: () =>
     get<{ sector: string; rs_5d_pct: number; constituents: number }[]>("/sectors/rotation"),
   briefToday: () => get<{ brief: string; market_data: Record<string, unknown> }>("/brief/today"),
+  portfolioRisk: () => get<PortfolioRisk>("/portfolio/risk"),
   health: () => get<{ status: string }>("/../health"),
 };

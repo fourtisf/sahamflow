@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import RegimeHistory
-from app.services import bandar_detector, foreign_flow_analyzer, technical_analysis
+from app.services import bandar_detector, foreign_flow_analyzer, technical_analysis, track_record, triggers
 from app.services.data_sync import load_ohlcv_df
 
 
@@ -81,7 +81,7 @@ def build_intel(db: Session, ticker: str) -> dict | None:
     regime_name = regime_row.regime if regime_row else None
     conviction = _conviction(score, regime_name, bandar.get("phase"))
 
-    return {
+    intel = {
         "ticker": ticker,
         "last_close": last_close,
         "composite_score": round(score, 3),
@@ -92,3 +92,9 @@ def build_intel(db: Session, ticker: str) -> dict | None:
         "levels": levels,
         "regime": {"name": regime_name, **conviction},
     }
+    # Execution discipline: trigger / invalidation / time stop.
+    intel["triggers"] = triggers.derive_triggers(intel)
+    # Track record of THIS setup historically (walk-forward, cached daily).
+    track = track_record.cached_track_record(db, ticker)
+    intel["track_record"] = track_record.match_current_setup(track, label, bandar.get("phase"))
+    return intel

@@ -28,6 +28,13 @@ def _morning_brief():
     data_sync.generate_signals()
 
 
+def _post_eod_alerts():
+    """After EOD signals are computed, push high-conviction setups to Telegram."""
+    from app.services import notifier
+
+    notifier.alert_strong_setups()
+
+
 def start_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is not None:
@@ -37,6 +44,7 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(_sync_eod, "cron", hour=17, minute=30, id="sync_eod")
     sched.add_job(data_sync.compute_regime, "cron", hour=18, minute=0, id="compute_regime")
     sched.add_job(data_sync.generate_signals, "cron", hour=18, minute=30, id="generate_signals")
+    sched.add_job(_post_eod_alerts, "cron", hour=18, minute=45, id="post_eod_alerts")
     sched.add_job(_morning_brief, "cron", hour=7, minute=0, id="morning_brief")
     sched.start()
     log.info("Scheduler started (tz=%s)", settings.TIMEZONE)

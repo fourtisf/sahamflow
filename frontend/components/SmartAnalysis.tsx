@@ -130,6 +130,54 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
           </>
         )}
 
+        {/* Execution triggers — when to act, when to abandon */}
+        {intel.triggers && (
+          <>
+            <div style={{ fontSize: 10, color: "var(--tx3)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>
+              EKSEKUSI — kapan masuk, kapan batal
+            </div>
+            <div className="rg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+              {Object.entries(intel.triggers.trigger).map(([k, v]) => (
+                <div className="rgc" key={k}>
+                  <div className="rg-l">{k.replace(/_/g, " ")}</div>
+                  <div className="rg-v mono" style={{ fontSize: 13 }}>{String(v)}</div>
+                </div>
+              ))}
+              <div className="rgc">
+                <div className="rg-l">invalidation</div>
+                <div className="rg-v mono dn" style={{ fontSize: 13 }}>{fmt(intel.triggers.invalidation.level)}</div>
+                <div className="rg-m">setup batal di level ini</div>
+              </div>
+              <div className="rgc">
+                <div className="rg-l">time stop</div>
+                <div className="rg-v mono" style={{ fontSize: 13 }}>{intel.triggers.time_stop_bars} bar</div>
+                <div className="rg-m">keluar jika diam</div>
+              </div>
+            </div>
+            <ul style={{ marginTop: 8, paddingLeft: 18, color: "var(--tx2)", fontSize: 11, lineHeight: 1.7 }}>
+              {intel.triggers.rules.map((rule, i) => <li key={i}>{rule}</li>)}
+            </ul>
+          </>
+        )}
+
+        {/* Track record of this setup historically */}
+        {intel.track_record && intel.track_record.n > 0 && (
+          <>
+            <div style={{ fontSize: 10, color: "var(--tx3)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>
+              TRACK RECORD — setup ini di {ticker} (walk-forward, biaya IDX 0.6% RT)
+            </div>
+            <div style={{ fontSize: 11, color: "var(--tx3)", marginBottom: 6 }}>Setup: <b className="gd">{intel.track_record.setup}</b></div>
+            <div className="rg" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))" }}>
+              <Stat label="Sample" value={`${intel.track_record.n} trades`} />
+              <Stat label="Hit Rate" value={`${intel.track_record.hit_rate_pct}%`} hint={intel.track_record.hit_rate_pct >= 55 ? "edge positif" : intel.track_record.hit_rate_pct >= 45 ? "marginal" : "negatif"} />
+              <Stat label="Avg Win" value={<span className="up">{fmt(intel.track_record.avg_win_pct)}%</span>} />
+              <Stat label="Avg Loss" value={<span className="dn">{fmt(intel.track_record.avg_loss_pct)}%</span>} />
+              <Stat label="Expectancy" value={<span style={{ color: intel.track_record.expectancy_pct > 0 ? "var(--grn)" : "var(--red)" }}>{fmt(intel.track_record.expectancy_pct)}%</span>} hint="per trade" />
+              <Stat label="Profit Factor" value={fmt(intel.track_record.profit_factor)} />
+            </div>
+          </>
+        )}
+
         {/* Regime conviction note */}
         {r.note && (
           <div className="alrt alrt-i" style={{ marginTop: 12 }}>

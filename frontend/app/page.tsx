@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IhsgChart, EquityChart } from "@/components/Charts";
+import { PortfolioRiskPanel } from "@/components/PortfolioRisk";
 import { SmartAnalysis } from "@/components/SmartAnalysis";
 import { api } from "@/lib/api";
 import { STOCKS, IHSG_30D, EQUITY, BENCHMARK } from "@/lib/fallback";
@@ -291,6 +292,7 @@ export default function Dashboard() {
         {/* RISK */}
         {show("risk") && (
           <>
+            <PortfolioRiskPanel />
             <div className="pnl sec">
               <div className="pnl-h"><span className="pnl-t">Risk Management</span><span className="pnl-n">Portfolio Heat</span><div className="pnl-r"><span className="pdot" />RT</div></div>
               <div className="rg">
