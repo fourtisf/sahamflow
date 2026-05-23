@@ -64,6 +64,16 @@ function scoreClass(s?: number | null) {
   return "sc-l";
 }
 
+// Bandar score color follows PHASE direction (Markdown high score = strong bearish = red,
+// Markup/Accum high score = strong bullish = green) — not raw score level.
+function bandarScoreClass(score: number | null | undefined, phase: string | null | undefined) {
+  if (score == null) return "fl";
+  const p = (phase || "").toLowerCase();
+  if (p.startsWith("markup") || p.startsWith("accum")) return score >= 65 ? "up" : "am";
+  if (p.startsWith("markd") || p.startsWith("distrib")) return score >= 65 ? "dn" : "am";
+  return "fl";
+}
+
 export default function Dashboard() {
   const [view, setView] = useState<View>("all");
   const [regime, setRegime] = useState<RegimeResponse | null>(null);
@@ -150,12 +160,21 @@ export default function Dashboard() {
     document.getElementById("smart-analysis-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  // Merge live screener rows over the prototype's stock ordering.
+  // Watchlist sekarang dari screener (45 LQ45) sortir by composite score.
+  // STOCKS meta dipakai sebagai overlay opsional untuk saham yang punya meta.
   const watch = useMemo(() => {
-    const order = Object.keys(STOCKS);
-    const byTicker = new Map(rows.map((r) => [r.ticker, r]));
-    return order.map((t) => ({ ticker: t, live: byTicker.get(t) ?? null, meta: STOCKS[t] }));
+    if (rows.length === 0) {
+      // Fallback ke STOCKS sampai data screener masuk
+      return Object.keys(STOCKS).map((t) => ({ ticker: t, live: null, meta: STOCKS[t] }));
+    }
+    return rows.map((r) => ({
+      ticker: r.ticker,
+      live: r,
+      meta: STOCKS[r.ticker] ?? null,
+    }));
   }, [rows]);
+
+  const fmtPrice = (n: number | null | undefined) => n == null ? "—" : Math.round(n).toLocaleString("id-ID");
 
   const show = (grp: string) => view === "all" || grp.split(" ").includes(view);
 
@@ -278,7 +297,7 @@ export default function Dashboard() {
                     <tr key={w.ticker} onClick={() => selectStock(w.ticker)}>
                       <td className="n">{i + 1}</td>
                       <td className="sym">{w.ticker}</td>
-                      <td className="r mono">{fmtID(w.meta.price)}</td>
+                      <td className="r mono">{w.meta ? fmtID(w.meta.price) : "—"}</td>
                       <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`}>{w.live?.bandar_phase || "—"}</span></td>
                       <td className={`scl ${scoreClass(w.live?.bandar_score)} mono`}>{w.live?.bandar_score ?? "—"}</td>
                     </tr>
@@ -391,12 +410,12 @@ GET /api/v1/backtest?ticker=BBCA&min_score=0.3
                     <tr key={w.ticker} onClick={() => selectStock(w.ticker)}>
                       <td className="n">{i + 1}</td>
                       <td className="sym">{w.ticker}</td>
-                      <td className="r mono">{fmtID(w.meta.price)}</td>
+                      <td className="r mono">{w.meta ? fmtID(w.meta.price) : "—"}</td>
                       <td className={`r mono ${(w.live?.composite_score ?? 0) >= 0 ? "up" : "dn"}`}>{w.live?.composite_score ?? "—"}</td>
-                      <td className={`r ${scoreClass(w.live?.bandar_score)} mono`}>{w.live?.bandar_score ?? "—"}</td>
+                      <td className={`r mono ${bandarScoreClass(w.live?.bandar_score, w.live?.bandar_phase)}`}>{w.live?.bandar_score ?? "—"}</td>
                       <td><span className={`ph ${phaseClass(w.live?.bandar_phase)}`}>{w.live?.bandar_phase || "—"}</span></td>
                       <td className={`r mono ${((w.live?.indicators as any)?.smart_money_score ?? 0) >= 20 ? "up" : ((w.live?.indicators as any)?.smart_money_score ?? 0) <= -20 ? "dn" : "fl"}`}>{(w.live?.indicators as any)?.smart_money_score ?? "—"}</td>
-                      <td className="r mono">{w.meta.qlty}</td>
+                      <td className="r mono">{w.meta?.qlty ?? "—"}</td>
                       <td><span className={`sg ${(w.live?.composite_score ?? 0) >= 0.2 ? "sg-b" : (w.live?.composite_score ?? 0) <= -0.2 ? "sg-s" : "sg-h"}`}>{w.live?.signal || "—"}</span></td>
                     </tr>
                   ))}
