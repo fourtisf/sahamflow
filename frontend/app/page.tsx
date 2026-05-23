@@ -442,7 +442,7 @@ export default function Dashboard() {
         </div>}
 
         {/* BANDAR + REVERSAL CANDIDATES */}
-        {show("bandar screener") && (
+        {show("bandar") && (
           <div className="r2e sec">
             <div className="pnl">
               <div className="pnl-h"><span className="pnl-t">Bandar Detection</span><span className="pnl-n">Wyckoff · Estimasi (butuh broker summary untuk presisi)</span><div className="pnl-r"><span className="pdot" />SCAN</div></div>
@@ -557,8 +557,8 @@ GET /api/v1/backtest?ticker=BBCA&min_score=0.3
           </div>
         )}
 
-        {/* WATCHLIST */}
-        {show("bandar screener") && (
+        {/* WATCHLIST / SCREENER */}
+        {show("screener") && (
           <div className="pnl sec">
             <div className="pnl-h"><span className="pnl-t">Signal Watchlist</span><span className="pnl-n">Composite · {watch.length} Stocks</span><div className="pnl-r gd">{clock} WIB</div></div>
             <div style={{ overflowX: "auto" }}>

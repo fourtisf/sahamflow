@@ -24,3 +24,4 @@ out/
 # Data dumps
 *.sqlite
 *.db
+frontend/tsconfig.tsbuildinfo
