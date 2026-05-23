@@ -82,7 +82,7 @@ def refresh_from_yfinance(tickers: list[str] | None = None) -> dict:
     from app.data_sources.yahoo_finance import to_yahoo_symbol
 
     if tickers is None:
-        tickers = settings.tickers
+        tickers = settings.universe
 
     _ensure_dir()
     existing = _read_json(_AUTO_PATH)
