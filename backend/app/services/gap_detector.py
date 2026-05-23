@@ -170,6 +170,57 @@ def combined_interpretation(stock_gap: dict | None, ihsg_gap: dict | None) -> st
     )
 
 
+def classify_gap_pattern(gap_pct: float, day_change_pct: float) -> str | None:
+    """Smart-money pattern based on gap + intraday closing behavior.
+
+    Returns one of:
+      'GAP_FILL_BULL'  — gap down + closing recover ke atas (REVERSAL)
+      'GAP_UP_FAIL'    — gap up + closing turun (EXHAUSTION TRAP)
+      'GAP_AND_GO'     — gap up + closing naik (BULLISH CONTINUATION)
+      'GAP_DN_CONT'    — gap down + closing turun (BEARISH PERSIST)
+      None             — gap tidak notable
+    """
+    if abs(gap_pct) < 1.0:
+        return None
+    gap_up = gap_pct > 0
+    day_up = day_change_pct > 0
+    if gap_up and day_up:
+        return "GAP_AND_GO"
+    if gap_up and not day_up:
+        return "GAP_UP_FAIL"
+    if not gap_up and day_up:
+        return "GAP_FILL_BULL"
+    return "GAP_DN_CONT"
+
+
+PATTERN_META = {
+    "GAP_FILL_BULL": {
+        "title": "💎 GAP FILL BULLISH",
+        "subtitle": "REVERSAL — gap down dibayar ke atas, smart money akumulasi",
+        "sort_key": lambda x: -x["day_change_pct"],
+        "row_emoji": "💎",
+    },
+    "GAP_AND_GO": {
+        "title": "🚀 GAP & GO",
+        "subtitle": "BULLISH CONTINUATION — gap up dengan follow-through kuat",
+        "sort_key": lambda x: -x["day_change_pct"],
+        "row_emoji": "🚀",
+    },
+    "GAP_UP_FAIL": {
+        "title": "⚠️ GAP UP FAIL",
+        "subtitle": "EXHAUSTION TRAP — gap up tapi closing turun, distribusi",
+        "sort_key": lambda x: x["day_change_pct"],
+        "row_emoji": "⚠️",
+    },
+    "GAP_DN_CONT": {
+        "title": "💀 GAP DOWN CONTINUATION",
+        "subtitle": "BEARISH PERSIST — gap down tanpa recover, hindari",
+        "sort_key": lambda x: x["day_change_pct"],
+        "row_emoji": "💀",
+    },
+}
+
+
 def scan_universe_gaps() -> tuple[dict, list[dict]]:
     """Scan semua ticker di universe untuk gap notable. Returns (ihsg_gap, notable_list).
 
@@ -184,11 +235,14 @@ def scan_universe_gaps() -> tuple[dict, list[dict]]:
     with SessionLocal() as db:
         for t in settings.universe:
             s = compute_overnight_gap(db, t)
-            if not s or s.get("severity") == "normal":
+            if not s:
+                continue
+            pattern = classify_gap_pattern(s["gap_pct"], s.get("day_change_pct", 0))
+            if not pattern:
                 continue
             s["ticker"] = t
+            s["pattern"] = pattern
             notable.append(s)
-    notable.sort(key=lambda x: abs(x["gap_pct"]), reverse=True)
     return ihsg, notable
 
 
@@ -217,46 +271,54 @@ def build_gap_radar_text() -> str:
     lines.append("")
 
     if not notable:
-        lines.append("_Tidak ada saham dengan gap notable. Market tenang._")
+        lines.append("_Tidak ada saham dengan pola gap notable. Market tenang._")
         return "\n".join(lines)
 
-    gap_up = [n for n in notable if n["direction"] == "up"]
-    gap_down = [n for n in notable if n["direction"] == "down"]
-
-    def _row(n: dict, sev_emoji: str) -> str:
+    def _row(n: dict, emoji: str) -> str:
         day = n.get("day_change_pct", 0)
         day_e = "🟢" if day > 0 else "🔴" if day < 0 else "⚪"
         return (
-            f"  {sev_emoji} `{n['ticker']:<5}` gap {n['gap_pct']:+.2f}%  "
+            f"  {emoji} `{n['ticker']:<5}` gap {n['gap_pct']:+.2f}%  "
             f"close `{n['close']:,.0f}`  day {day_e}{day:+.2f}%"
         )
 
-    if gap_up:
-        lines.append("*━━ GAP UP ━━*")
-        for n in gap_up[:15]:
-            sev_emoji = "🔥" if n["severity"] == "extreme" else "⬆️" if n["severity"] == "large" else "↗️"
-            lines.append(_row(n, sev_emoji))
+    # Render dalam urutan smart-money priority: bullish reversal dulu,
+    # lalu bullish continuation, lalu exhaustion warnings, lalu bearish persist.
+    order = ["GAP_FILL_BULL", "GAP_AND_GO", "GAP_UP_FAIL", "GAP_DN_CONT"]
+    for pat in order:
+        group = [n for n in notable if n["pattern"] == pat]
+        if not group:
+            continue
+        meta = PATTERN_META[pat]
+        group.sort(key=meta["sort_key"])
+        lines.append(f"*━━ {meta['title']} ━━*")
+        lines.append(f"_{meta['subtitle']}_")
+        for n in group[:12]:
+            lines.append(_row(n, meta["row_emoji"]))
         lines.append("")
 
-    if gap_down:
-        lines.append("*━━ GAP DOWN ━━*")
-        for n in gap_down[:15]:
-            sev_emoji = "💥" if n["severity"] == "extreme" else "⬇️" if n["severity"] == "large" else "↘️"
-            lines.append(_row(n, sev_emoji))
-        lines.append("")
-
-    # Smart money takeaway
     lines.append("*━━ SMART MONEY NOTES ━━*")
-    if ihsg and ihsg["severity"] != "normal":
-        lines.append(f"  • IHSG gap {ihsg['direction']} {ihsg['gap_pct']:+.2f}% → market-wide sentiment, gap saham yang sama arah = ikut macro.")
+    if ihsg and ihsg.get("severity") != "normal":
+        lines.append(
+            f"  • IHSG gap {ihsg['gap_pct']:+.2f}% ({ihsg['severity']}) → market-wide sentiment."
+        )
     else:
-        lines.append("  • IHSG flat → semua gap di bawah ini *ISOLATED* (bukan macro). Investigasi per ticker.")
-    if gap_down:
-        biggest = gap_down[0]
-        lines.append(f"  • Gap down terbesar: *{biggest['ticker']}* {biggest['gap_pct']:+.2f}% — potensi fill ke atas / akumulasi smart money.")
-    if gap_up:
-        biggest = gap_up[0]
-        lines.append(f"  • Gap up terbesar: *{biggest['ticker']}* {biggest['gap_pct']:+.2f}% — leader hari ini, hati-hati exhaustion.")
+        lines.append("  • IHSG flat → pola gap di bawah ini *ISOLATED* (bukan macro).")
+
+    fill_bull = [n for n in notable if n["pattern"] == "GAP_FILL_BULL"]
+    up_fail = [n for n in notable if n["pattern"] == "GAP_UP_FAIL"]
+    if fill_bull:
+        top = max(fill_bull, key=lambda x: x["day_change_pct"])
+        lines.append(
+            f"  • 💎 Best reversal: *{top['ticker']}* gap {top['gap_pct']:+.2f}% → "
+            f"day {top['day_change_pct']:+.2f}% — akumulasi smart money kuat."
+        )
+    if up_fail:
+        top = min(up_fail, key=lambda x: x["day_change_pct"])
+        lines.append(
+            f"  • ⚠️ Worst trap: *{top['ticker']}* gap {top['gap_pct']:+.2f}% → "
+            f"day {top['day_change_pct']:+.2f}% — distribusi, JANGAN kejar."
+        )
 
     lines.append("")
     lines.append("_Bukan rekomendasi. Cross-check volume + struktur chart sebelum entry._")
