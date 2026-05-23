@@ -72,10 +72,21 @@ export default function Dashboard() {
   const [indices, setIndices] = useState<Record<string, Quote> | null>(null);
   const [ihsg, setIhsg] = useState<{ closes: number[]; support: number | null; resistance: number | null; last: number | null } | null>(null);
 
-  const [sel, setSel] = useState("BREN");
+  const [sel, setSel] = useState("BBCA");
   const [modal, setModal] = useState("500.000.000");
   const [entry, setEntry] = useState("9.825");
   const [clock, setClock] = useState("");
+
+  // Restore last selection from localStorage on mount; default tetap BBCA.
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("sahamflow:sel") : null;
+    if (saved) setSel(saved);
+  }, []);
+
+  // Persist selection.
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("sahamflow:sel", sel);
+  }, [sel]);
 
   useEffect(() => {
     (async () => {
