@@ -41,6 +41,10 @@ def _tg_api(method: str, payload: dict) -> dict | None:
             timeout=15,
         )
         if r.status_code != 200:
+            # "message is not modified" untuk editMessageText artinya konten sama
+            # → bukan failure, pinned sudah up-to-date. Treat as success.
+            if method == "editMessageText" and "not modified" in r.text:
+                return {"ok": True, "result": True, "noop": True}
             log.warning("Telegram %s %s: %s", method, r.status_code, r.text[:200])
             return None
         return r.json()
