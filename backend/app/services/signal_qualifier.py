@@ -38,11 +38,19 @@ def qualify(intel: dict, account_size_idr: float = 500_000_000) -> dict:
     reasons: list[str] = []
     blockers: list[str] = []
 
-    # --- HARD GATES ---
-    if abs(score) < MIN_ABS_SCORE:
-        blockers.append(f"Composite |{score}| < {MIN_ABS_SCORE} — bukan high-conviction.")
+    # --- HARD GATES (long-only) ---
+    # IDX retail = no short. Hanya kirim alert untuk BUY setup (score positif).
+    if score < MIN_ABS_SCORE:
+        if score <= -MIN_ABS_SCORE:
+            blockers.append(
+                f"Composite {score} = Strong Sell. IDX retail tidak bisa short — "
+                f"sinyal ini tidak actionable sebagai trade baru. (Reversal overlay "
+                f"akan muncul terpisah jika kondisi bottom-fishing memenuhi.)"
+            )
+        else:
+            blockers.append(f"Composite {score} < +{MIN_ABS_SCORE} — bukan high-conviction Buy.")
     else:
-        reasons.append(f"Composite {score} ({label}) — high conviction.")
+        reasons.append(f"Composite {score} ({label}) — high conviction BUY.")
 
     if not regime.get("regime_aligned"):
         blockers.append(f"Counter-trend terhadap regime {regime.get('name')} — keyakinan rendah.")

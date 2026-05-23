@@ -11,45 +11,32 @@ from __future__ import annotations
 def derive_triggers(intel: dict) -> dict | None:
     """intel: payload dari signal_intelligence.build_intel.
 
-    Returns None untuk sinyal Hold (tidak ada trigger). Untuk Buy/Sell
-    mengembalikan {trigger, invalidation, time_stop, rules}.
+    Long-only (IDX): hanya bangun trigger untuk bias='long'. Avoid/short tidak
+    diberi trigger entry karena IDX retail tidak bisa short.
     """
     last = intel.get("last_close")
     atr = (intel.get("indicators") or {}).get("atr14")
-    bias = (intel.get("regime") or {}).get("bias")
+    bias = intel.get("bias") or (intel.get("regime") or {}).get("bias")
     score = intel.get("composite_score", 0) or 0
 
-    if not last or not atr or bias not in ("long", "short"):
+    if not last or not atr or bias != "long":
         return None
 
     strong = abs(score) >= 0.5
-    confirm_buffer = 0.5 * atr  # break harus jelas, bukan touch
+    confirm_buffer = 0.5 * atr
     pullback_buffer = 0.5 * atr
 
-    if bias == "long":
-        trigger = {
-            "type": "long_breakout_or_pullback",
-            "entry_breakout_above": round(last + confirm_buffer, 2),
-            "entry_pullback_at": round(last - pullback_buffer, 2),
-            "require_volume_x": 1.5,
-            "preferred_entry": "breakout" if strong else "pullback",
-        }
-        invalidation = {
-            "level": round(last - 2 * atr, 2),
-            "rule": "Setup gugur jika close di bawah level invalidasi.",
-        }
-    else:  # short
-        trigger = {
-            "type": "short_breakdown_or_rejection",
-            "entry_breakdown_below": round(last - confirm_buffer, 2),
-            "entry_rejection_at": round(last + pullback_buffer, 2),
-            "require_volume_x": 1.5,
-            "preferred_entry": "breakdown" if strong else "rejection",
-        }
-        invalidation = {
-            "level": round(last + 2 * atr, 2),
-            "rule": "Setup gugur jika close di atas level invalidasi.",
-        }
+    trigger = {
+        "type": "long_breakout_or_pullback",
+        "entry_breakout_above": round(last + confirm_buffer, 2),
+        "entry_pullback_at": round(last - pullback_buffer, 2),
+        "require_volume_x": 1.5,
+        "preferred_entry": "breakout" if strong else "pullback",
+    }
+    invalidation = {
+        "level": round(last - 2 * atr, 2),
+        "rule": "Setup gugur jika close di bawah level invalidasi.",
+    }
 
     time_stop_bars = 10 if strong else 7
     return {

@@ -10,6 +10,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import RegimeHistory
 from app.services import (
     bandar_detector,
@@ -26,8 +27,26 @@ def _bias_from_score(score: float) -> str:
     if score >= 0.2:
         return "long"
     if score <= -0.2:
-        return "short"
+        # IDX retail tidak bisa short. Map ke 'avoid' (jangan beli), bukan short.
+        return "avoid" if settings.MARKET_MODE == "long_only" else "short"
     return "neutral"
+
+
+def _long_only_action(signal_label: str) -> str:
+    """Label aksi untuk long-only market (IDX retail).
+
+    Strong Buy / Buy = BELI sinyal aktif
+    Hold = TUNGGU / WATCH
+    Sell / Strong Sell = AVOID (jangan beli) atau EXIT (kalau sudah hold)
+    """
+    mapping = {
+        "Strong Buy": "BUY",
+        "Buy": "BUY",
+        "Hold": "WATCH",
+        "Sell": "AVOID / EXIT",
+        "Strong Sell": "AVOID / EXIT",
+    }
+    return mapping.get(signal_label, "WATCH")
 
 
 def _conviction(score: float, regime: str | None, bandar_phase: str | None) -> dict:
@@ -92,13 +111,19 @@ def build_intel(db: Session, ticker: str) -> dict | None:
 
     last_close = float(df["close"].iloc[-1])
     bias = _bias_from_score(score)
-    levels = technical_analysis.execution_levels(
-        last_close,
-        breakdown.get("atr14"),
-        bias,
-        swing_low=breakdown.get("swing_low_60d"),
-        swing_high=breakdown.get("swing_high_60d"),
-    )
+    long_only = settings.MARKET_MODE == "long_only"
+
+    # Hanya bangun execution_levels untuk LONG. Avoid/short tidak ada entry di IDX.
+    if bias == "long":
+        levels = technical_analysis.execution_levels(
+            last_close,
+            breakdown.get("atr14"),
+            "long",
+            swing_low=breakdown.get("swing_low_60d"),
+            swing_high=breakdown.get("swing_high_60d"),
+        )
+    else:
+        levels = None  # AVOID/WATCH — tidak ada entry di IDX long-only
 
     regime_row = db.execute(
         select(RegimeHistory).order_by(RegimeHistory.date.desc()).limit(1)
@@ -114,15 +139,34 @@ def build_intel(db: Session, ticker: str) -> dict | None:
         if c is not None
     ]
 
+    # Action label untuk long-only — yang USER ACT bedasarkan ini
+    action = _long_only_action(label) if long_only else label
+
+    # Wait conditions: kalau AVOID, kasih syarat balik bullish (bukan setup short)
+    wait_conditions: list[str] | None = None
+    if bias == "avoid":
+        sw_high = breakdown.get("swing_high_60d")
+        ma20 = breakdown.get("ma20")
+        wait_conditions = [
+            f"Tunggu close > MA20 ({ma20})" if ma20 else "Tunggu close di atas MA20.",
+            "Tunggu RSI 14 menembus 45 (momentum kembali).",
+            f"Tunggu break swing high {sw_high} dengan volume ≥ 1.5×." if sw_high else "Tunggu breakout dengan volume thrust.",
+            "Kalau sudah hold: pertimbangkan EXIT di rebound minor ke MA20 / swing high.",
+        ]
+
     intel = {
         "ticker": ticker,
         "last_close": last_close,
         "composite_score": round(score, 3),
         "signal": label,
+        "action": action,  # BUY / WATCH / AVOID / EXIT — long-only friendly
+        "bias": bias,
+        "market_mode": settings.MARKET_MODE,
         "indicators": breakdown,
         "bandar": bandar,
         "foreign_flow": ff,
         "levels": levels,
+        "wait_conditions": wait_conditions,
         "regime": {"name": regime_name, **conviction},
         "history": history,
     }

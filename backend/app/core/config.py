@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: str = ""
     # Portfolio risk defaults (IDR)
     ACCOUNT_SIZE_IDR: int = 500_000_000
+    # IDX retail TIDAK bisa short. Long-only mode = skor negatif tidak menghasilkan
+    # setup short, melainkan label AVOID/EXIT + waiting conditions untuk reversal.
+    MARKET_MODE: str = "long_only"
     DATABASE_URL: str = "postgresql+psycopg://sahamflow:sahamflow@localhost:5432/sahamflow"
     REDIS_URL: str = "redis://localhost:6379/0"
 

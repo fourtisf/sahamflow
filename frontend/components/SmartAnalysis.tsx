@@ -67,6 +67,7 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
   const r = intel.regime;
   const lv = intel.levels;
   const sigColor = intel.composite_score >= 0.2 ? "var(--grn)" : intel.composite_score <= -0.2 ? "var(--red)" : "var(--amb)";
+  const actionColor = intel.action === "BUY" ? "var(--grn)" : intel.action?.includes("AVOID") ? "var(--red)" : "var(--amb)";
 
   return (
     <div className="pnl sec">
@@ -76,13 +77,35 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
         <div className="pnl-r"><span className="pdot" />LIVE</div>
       </div>
 
-      {/* Headline row */}
+      {/* Headline row — ACTION (long-only IDX) lebih penting dari Signal */}
       <div className="rg" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
-        <Stat label="Signal" value={<span style={{ color: sigColor }}>{intel.signal}</span>} hint={`score ${fmt(intel.composite_score, 3)}`} />
+        <Stat
+          label="Action (IDX long-only)"
+          value={<span style={{ color: actionColor, fontWeight: 700 }}>{intel.action || intel.signal}</span>}
+          hint={`signal: ${intel.signal} · score ${fmt(intel.composite_score, 3)}`}
+        />
         <Stat label="Conviction" value={`${r.conviction_pct}%`} hint={r.regime_aligned ? "selaras regime" : "counter-trend"} />
-        <Stat label="Regime" value={r.name ?? "—"} hint={`bias: ${r.bias}`} />
+        <Stat label="Regime" value={r.name ?? "—"} hint={`bias: ${intel.bias}`} />
         <Stat label="Bandar" value={intel.bandar.phase} hint={`vol× ${fmt(intel.bandar.vol_ratio ?? null, 2)} · estimasi`} />
       </div>
+
+      {/* AVOID/EXIT banner — long-only friendly, no short setup shown */}
+      {intel.bias === "avoid" && (
+        <div className="pnl-b" style={{ background: "rgba(255,71,87,0.08)", borderTop: "1px solid var(--red)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--red)", letterSpacing: "0.04em", marginBottom: 8 }}>
+            ⛔ AVOID — jangan buka posisi long baru di {ticker}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--tx2)", marginBottom: 6 }}>
+            IDX retail tidak ada short. Skor negatif = bukan setup short, melainkan sinyal untuk <b>tidak beli sekarang</b>
+            atau <b>exit kalau sudah hold</b>. Tunggu konfirmasi pembalikan di bawah ini.
+          </div>
+          {intel.wait_conditions && (
+            <ul style={{ paddingLeft: 18, color: "var(--tx2)", fontSize: 11, lineHeight: 1.7, margin: 0 }}>
+              {intel.wait_conditions.map((w, idx) => <li key={idx}>{w}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Inline price chart 60D */}
       {intel.history && intel.history.length > 0 && (

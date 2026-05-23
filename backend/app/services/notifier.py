@@ -67,7 +67,7 @@ def _build_ticket(intel: dict, qual: dict) -> str:
     t = intel["ticker"]
     score = intel.get("composite_score", 0)
     label = intel.get("signal", "Hold")
-    action = "🟢 *BUY*" if score > 0 else "🔴 *SELL*"
+    action = "🟢 *BUY*"  # long-only mode untuk IDX retail
     last = intel["last_close"]
     regime = intel.get("regime") or {}
     levels = intel.get("levels") or {}
@@ -76,10 +76,7 @@ def _build_ticket(intel: dict, qual: dict) -> str:
     inv = triggers.get("invalidation", {}) if triggers else {}
     pos = qual.get("position") or {}
 
-    if score > 0:
-        entry_str = f"breakout *> {trig.get('entry_breakout_above', last)}* (vol ≥ 1.5×) atau pullback ke {trig.get('entry_pullback_at')}"
-    else:
-        entry_str = f"breakdown *< {trig.get('entry_breakdown_below', last)}* (vol ≥ 1.5×) atau rejection di {trig.get('entry_rejection_at')}"
+    entry_str = f"breakout *> {trig.get('entry_breakout_above', last)}* (vol ≥ 1.5×) atau pullback ke {trig.get('entry_pullback_at')}"
 
     lines = [
         f"{action} `{t}` — {label}",
@@ -149,8 +146,10 @@ def alert_strong_setups(max_per_run: int = 5) -> dict:
             header_lines.append(f"  • Reversal day +{path['reversal_day'].get('reversal_pct')}% terdeteksi")
         telegram_send("\n".join(header_lines))
 
-        # Per-ticker tickets
-        candidates = [r for r in rows if abs(r.composite_score or 0) >= 0.5]
+        # Per-ticker tickets — LONG-ONLY: hanya kandidat skor positif (Buy).
+        # Score negatif tidak actionable di IDX retail (no short). Reversal candidates
+        # ditangani panel terpisah di dashboard, tidak via TG alert default.
+        candidates = [r for r in rows if (r.composite_score or 0) >= 0.5]
         for r in candidates:
             summary["evaluated"] += 1
             intel = signal_intelligence.build_intel(db, r.ticker)

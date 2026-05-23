@@ -31,6 +31,10 @@ export interface StockIntel {
   last_close: number;
   composite_score: number;
   signal: string;
+  action: "BUY" | "WATCH" | "AVOID / EXIT" | string;
+  bias: "long" | "avoid" | "neutral" | string;
+  market_mode: string;
+  wait_conditions: string[] | null;
   indicators: {
     rsi14: number;
     macd_hist: number;
