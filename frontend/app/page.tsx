@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { IhsgChart, EquityChart } from "@/components/Charts";
 import { PortfolioBacktest } from "@/components/PortfolioBacktest";
-import { PortfolioRiskPanel } from "@/components/PortfolioRisk";
 import { ReversalCandidates } from "@/components/ReversalCandidates";
 import { SmartAnalysis } from "@/components/SmartAnalysis";
 import { StockSearch } from "@/components/StockSearch";
@@ -291,32 +290,24 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* RISK */}
+        {/* RISK — Portfolio Risk & Position Sizer dihapus per permintaan user.
+            Sizing & risk gating sekarang built-in di Smart Analysis (ATR levels +
+            quality threshold). Pre-trade check tetap tersedia via API
+            POST /api/v1/portfolio/check untuk integrasi otomatis nanti. */}
         {show("risk") && (
-          <>
-            <PortfolioRiskPanel />
-            <div className="rr sec">
-              <div className="pnl">
-                <div className="pnl-h"><span className="pnl-t">Position Sizer</span><span className="pnl-n">1% Risk · ATR×2 · 1:3</span></div>
-                <div className="pnl-b">
-                  <div className="szr"><span className="szl">Modal Tersedia</span><input className="szi" value={modal} onChange={(e) => setModal(e.target.value)} /></div>
-                  <div className="szr"><span className="szl">Saham Target</span><input className="szi" value={sel} readOnly /></div>
-                  <div className="szr"><span className="szl">Entry Price</span><input className="szi" value={entry} onChange={(e) => setEntry(e.target.value)} /></div>
-                  <div className="szr"><span className="szl">Stop Loss (ATR×2)</span><span className="szv mono">{sizer?.sl ?? "—"}</span></div>
-                  <div className="szr"><span className="szl">Take Profit (1:3)</span><span className="szv mono">{sizer?.tp ?? "—"}</span></div>
-                  <div className="szr"><span className="szl">Risk/Trade (1%)</span><span className="szv mono">{sizer?.risk ?? "—"}</span></div>
-                  <div className="szr"><span className="szl">Position Size</span><span className="szv up mono">{sizer?.pos ?? "—"}</span></div>
-                </div>
-              </div>
-              <div className="pnl">
-                <div className="pnl-h"><span className="pnl-t">Risk Alerts</span><span className="pnl-n">AI Engine</span></div>
-                <div className="pnl-b">
-                  <div className="alrt alrt-i"><b>► SIZING:</b> Risk 1%/trade + SL ATR-based → maks 5 posisi paralel tanpa lewati portfolio heat 6%.</div>
-                  <div className="alrt alrt-w"><b>⚠ DATA:</b> Korelasi & heat real-time aktif penuh setelah journal terisi trade dan foreign flow tersedia.</div>
-                </div>
+          <div className="pnl sec">
+            <div className="pnl-h"><span className="pnl-t">Risk</span><span className="pnl-n">Built into Smart Analysis</span></div>
+            <div className="pnl-b">
+              <div className="alrt alrt-i">
+                <b>► RISK & SIZING DIPINDAH KE SMART ANALYSIS</b><br/>
+                Klik saham apa pun → panel <b>Smart Analysis</b> sudah menampilkan
+                level eksekusi berbasis ATR (Entry / SL / TP / R:R) per saham,
+                konteks regime, dan signature reversal kalau ada. Untuk pre-trade
+                check (heat, korelasi, sektor), backend tetap menyediakan
+                endpoint <code>POST /api/v1/portfolio/check</code>.
               </div>
             </div>
-          </>
+          </div>
         )}
 
         {/* FUND + SENTIMENT */}
