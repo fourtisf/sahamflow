@@ -207,7 +207,12 @@ export default function Dashboard() {
             <div className="nstat">
               <span className="live" /><span className="hide">{live ? "DATA LIVE" : "IDX EOD"}</span><span>{clock}</span>
             </div>
-            <div className="av">A</div>
+            <div className="av" title="Account">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="8" r="4" fill="#1a1200"/>
+                <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#1a1200" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+              </svg>
+            </div>
           </div>
         </div>
       </nav>
@@ -215,7 +220,7 @@ export default function Dashboard() {
       <div className="wrap">
         <div className="head">
           <div>
-            <div className="htitle">Selamat datang, <span className="goldtext">ALFA</span></div>
+            <div className="htitle">Selamat datang di <span className="goldtext">Sahamflow</span></div>
             <div className="hsub">
               {regime?.regime ? `Regime: ${regime.regime}` : "IHSG"} ·{" "}
               {live ? "Data sinyal terkini dari backend" : "Menunggu sinkronisasi data backend"}
