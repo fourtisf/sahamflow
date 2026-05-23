@@ -192,8 +192,8 @@ export default function Dashboard() {
       <nav className="nav">
         <div className="navin">
           <div className="brand">
-            <div className="bmark">S</div>
-            <div className="bname">Saham<span className="goldtext">flow</span></div>
+            <img src="/icon.svg" alt="Sahamflow" className="bmark-img" width={34} height={34} />
+            <div className="bname"><span className="brand-saham">Saham</span><span className="brand-flow">flow</span></div>
           </div>
           <div className="ntabs">
             {TABS.map((t) => (
