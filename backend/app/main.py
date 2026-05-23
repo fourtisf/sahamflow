@@ -13,6 +13,7 @@ from app.api.v1 import (
     portfolio,
     regime,
     screener,
+    search,
     sectors,
     stock,
     sync,
@@ -44,7 +45,7 @@ app.add_middleware(
 )
 
 API_PREFIX = "/api/v1"
-for module in (regime, screener, stock, foreign_flow, sectors, backtest, brief, trades, sync, market, portfolio):
+for module in (regime, screener, stock, foreign_flow, sectors, backtest, brief, trades, sync, market, portfolio, search):
     app.include_router(module.router, prefix=API_PREFIX)
 
 

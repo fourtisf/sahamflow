@@ -76,6 +76,7 @@ export interface StockIntel {
     expectancy_pct: number;
     profit_factor: number;
   } | null;
+  history: { date: string; close: number }[];
 }
 
 export interface PortfolioRisk {

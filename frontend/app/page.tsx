@@ -5,6 +5,7 @@ import { IhsgChart, EquityChart } from "@/components/Charts";
 import { PortfolioRiskPanel } from "@/components/PortfolioRisk";
 import { ReversalCandidates } from "@/components/ReversalCandidates";
 import { SmartAnalysis } from "@/components/SmartAnalysis";
+import { StockSearch } from "@/components/StockSearch";
 import { api } from "@/lib/api";
 import { STOCKS, IHSG_30D, EQUITY, BENCHMARK } from "@/lib/fallback";
 import type { RegimeResponse, ScreenerRow } from "@/lib/types";
@@ -132,9 +133,10 @@ export default function Dashboard() {
   const meta = STOCKS[sel] ?? STOCKS.BREN;
 
   function selectStock(sym: string) {
-    if (!STOCKS[sym]) return;
-    setSel(sym);
-    setEntry(fmtID(STOCKS[sym].price));
+    setSel(sym.toUpperCase());
+    if (STOCKS[sym]) setEntry(fmtID(STOCKS[sym].price));
+    // SmartAnalysis will fetch fresh intel for any ticker (lazy-fetch backend).
+    document.getElementById("smart-analysis-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   // Merge live screener rows over the prototype's stock ordering.
@@ -161,6 +163,7 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+          <StockSearch onSelect={selectStock} />
           <div className="nright">
             <div className="nstat">
               <span className="live" /><span className="hide">{live ? "DATA LIVE" : "IDX EOD"}</span><span>{clock}</span>
@@ -249,6 +252,7 @@ export default function Dashboard() {
         </div>
 
         {/* SMART ANALYSIS — per-stock buy-side intel */}
+        <div id="smart-analysis-anchor" />
         <SmartAnalysis ticker={sel} />
 
         {/* BANDAR + REVERSAL CANDIDATES */}

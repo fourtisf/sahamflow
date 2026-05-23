@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { IhsgChart } from "@/components/Charts";
 import { api } from "@/lib/api";
 import type { StockIntel } from "@/lib/types";
 
@@ -82,6 +83,19 @@ export function SmartAnalysis({ ticker }: { ticker: string }) {
         <Stat label="Regime" value={r.name ?? "—"} hint={`bias: ${r.bias}`} />
         <Stat label="Bandar" value={intel.bandar.phase} hint={`vol× ${fmt(intel.bandar.vol_ratio ?? null, 2)} · estimasi`} />
       </div>
+
+      {/* Inline price chart 60D */}
+      {intel.history && intel.history.length > 0 && (
+        <div className="pnl-b" style={{ borderTop: "1px solid var(--line)", padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontSize: 10, color: "var(--tx3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              {ticker} 60D DAILY
+            </span>
+            <span className="mono gd" style={{ fontSize: 13 }}>{intel.last_close.toLocaleString("id-ID")}</span>
+          </div>
+          <div className="cw"><IhsgChart data={intel.history.map((h) => h.close)} /></div>
+        </div>
+      )}
 
       {/* Indicator breakdown — the numbers a trader actually reads */}
       <div className="pnl-b" style={{ borderTop: "1px solid var(--line)" }}>

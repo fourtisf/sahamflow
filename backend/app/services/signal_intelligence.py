@@ -54,10 +54,22 @@ def _conviction(score: float, regime: str | None, bandar_phase: str | None) -> d
 
 
 def build_intel(db: Session, ticker: str) -> dict | None:
-    """Return the full smart-money intel payload for a ticker, or None if no data."""
+    """Return the full smart-money intel payload for a ticker, or None if no data.
+
+    Jika ticker belum ada di DB (di luar universe pre-sync), coba lazy-fetch dari
+    yfinance dan simpan supaya panggilan berikutnya cepat.
+    """
     df = load_ohlcv_df(db, ticker)
     if df.empty or len(df) < 20:
-        return None
+        try:
+            from app.services.data_sync import sync_ohlcv
+
+            sync_ohlcv([ticker], period="1y")
+            df = load_ohlcv_df(db, ticker)
+        except Exception:
+            return None
+        if df.empty or len(df) < 20:
+            return None
 
     score, indicators_raw = technical_analysis.composite_score(df)
     label = technical_analysis.signal_label(score)
@@ -81,6 +93,14 @@ def build_intel(db: Session, ticker: str) -> dict | None:
     regime_name = regime_row.regime if regime_row else None
     conviction = _conviction(score, regime_name, bandar.get("phase"))
 
+    # 60-day price history for the inline chart in SmartAnalysis.
+    history_df = df.tail(60)
+    history = [
+        {"date": str(d), "close": float(c)}
+        for d, c in zip(history_df.index, history_df["close"])
+        if c is not None
+    ]
+
     intel = {
         "ticker": ticker,
         "last_close": last_close,
@@ -91,6 +111,7 @@ def build_intel(db: Session, ticker: str) -> dict | None:
         "foreign_flow": ff,
         "levels": levels,
         "regime": {"name": regime_name, **conviction},
+        "history": history,
     }
     # Execution discipline: trigger / invalidation / time stop.
     intel["triggers"] = triggers.derive_triggers(intel)
