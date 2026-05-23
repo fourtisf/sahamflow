@@ -91,11 +91,10 @@ def _build_ticket(intel: dict, qual: dict) -> str:
         f"  SL `{levels.get('stop_loss', '?'):,.0f}` (−{levels.get('risk_pct')}%)",
         f"  R:R *1 : {levels.get('rr_ratio', 3)}* · Invalidation: close di luar `{inv.get('level', '?'):,.0f}`",
         "",
-        "*POSITION*",
+        "*POSITION SIZING*",
         (
-            f"  {pos.get('shares', 0):,} lbr · notional {_fmt_idr(pos.get('notional_idr'))} · risk {_fmt_idr(pos.get('risk_idr'))}"
-            + (f" _(dicap: {pos['capped_by']})_" if pos.get("capped_by") else "")
-            if pos else "  Tidak ada (data sizing kurang)"
+            f"  Risk per trade: *{levels.get('risk_pct', 1)}%* dari modal"
+            + (f" · _likuiditas: {pos['capped_by']}_" if pos and pos.get("capped_by") else "")
         ),
         "",
         "*REASON*",
