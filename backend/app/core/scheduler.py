@@ -55,11 +55,13 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(data_sync.compute_regime, "cron", hour=18, minute=0, id="compute_regime")
     sched.add_job(data_sync.generate_signals, "cron", hour=18, minute=30, id="generate_signals")
     sched.add_job(_post_eod_alerts, "cron", hour=18, minute=45, id="post_eod_alerts")
-    # Invalidation monitor: tiap jam selama market jam IDX.
+    # Invalidation monitor: jam pasar (intraday hook) + post-EOD untuk catch
+    # SL/TP dari close baru + refresh pinned PnL.
     sched.add_job(
         _invalidation_check, "cron",
-        hour="9-15", minute=15, day_of_week="mon-fri", id="invalidation_monitor",
+        hour="9-15", minute=15, day_of_week="mon-fri", id="invalidation_monitor_intraday",
     )
+    sched.add_job(_invalidation_check, "cron", hour=18, minute=50, id="invalidation_monitor_eod")
     sched.add_job(_morning_brief, "cron", hour=7, minute=0, id="morning_brief")
     sched.start()
     log.info("Scheduler started (tz=%s)", settings.TIMEZONE)

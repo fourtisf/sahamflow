@@ -17,6 +17,7 @@ import json
 import logging
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 from sqlalchemy import select
@@ -84,6 +85,49 @@ def telegram_unpin_all() -> bool:
         "chat_id": settings.TELEGRAM_CHAT_ID,
     })
     return bool(resp and resp.get("ok"))
+
+
+def telegram_edit(message_id: int, text: str) -> bool:
+    resp = _tg_api("editMessageText", {
+        "chat_id": settings.TELEGRAM_CHAT_ID,
+        "message_id": message_id,
+        "text": text,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+    })
+    return bool(resp and resp.get("ok"))
+
+
+# --- Persistent bot state (pinned message id, dll) ---
+_STATE_PATH = Path(__file__).resolve().parents[2] / "bot_state.json"
+
+
+def _load_state() -> dict:
+    try:
+        return json.loads(_STATE_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def _save_state(state: dict) -> None:
+    try:
+        _STATE_PATH.write_text(json.dumps(state))
+    except Exception as e:
+        log.warning("Failed to save bot_state: %s", e)
+
+
+def get_pinned_msg_id() -> int | None:
+    v = _load_state().get("pinned_pnl_msg_id")
+    return int(v) if v else None
+
+
+def set_pinned_msg_id(msg_id: int | None) -> None:
+    s = _load_state()
+    if msg_id is None:
+        s.pop("pinned_pnl_msg_id", None)
+    else:
+        s["pinned_pnl_msg_id"] = msg_id
+    _save_state(s)
 
 
 def _classify_setup(intel: dict) -> tuple[str, str, str]:
@@ -404,6 +448,14 @@ def alert_strong_setups(max_per_run: int = 5, min_score_override: float | None =
                 f"_{len(candidates)} kandidat dievaluasi, semua diblokir._\n"
                 f"`{blockers_summary}`"
             )
+
+    # Refresh pinned PnL kalau ada Trade baru ter-record (production only)
+    if summary["sent"] > 0 and min_score_override is None:
+        try:
+            from app.services import invalidation_monitor
+            invalidation_monitor.refresh_pinned_pnl_summary()
+        except Exception as e:
+            log.warning("Pinned refresh after alerts failed: %s", e)
 
     log.info("Alerts: %s", summary)
     return summary
