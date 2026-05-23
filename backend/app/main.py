@@ -9,7 +9,9 @@ from app.api.v1 import (
     backtest,
     brief,
     foreign_flow,
+    gap,
     market,
+    pnl,
     portfolio,
     regime,
     screener,
@@ -45,7 +47,7 @@ app.add_middleware(
 )
 
 API_PREFIX = "/api/v1"
-for module in (regime, screener, stock, foreign_flow, sectors, backtest, brief, trades, sync, market, portfolio, search):
+for module in (regime, screener, stock, foreign_flow, sectors, backtest, brief, trades, sync, market, portfolio, search, gap, pnl):
     app.include_router(module.router, prefix=API_PREFIX)
 
 

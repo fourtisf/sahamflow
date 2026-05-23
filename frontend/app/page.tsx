@@ -6,19 +6,28 @@ import { PortfolioBacktest } from "@/components/PortfolioBacktest";
 import { ReversalCandidates } from "@/components/ReversalCandidates";
 import { SmartAnalysis } from "@/components/SmartAnalysis";
 import { StockSearch } from "@/components/StockSearch";
-import { api } from "@/lib/api";
+import { api, type GapRadarResponse, type PnlSummary, type TradeRecord } from "@/lib/api";
 import { STOCKS, IHSG_30D, EQUITY, BENCHMARK } from "@/lib/fallback";
 import type { RegimeResponse, ScreenerRow } from "@/lib/types";
 
-type View = "all" | "bandar" | "screener" | "risk" | "backtest" | "journal";
+type View = "all" | "gap" | "pnl" | "bandar" | "screener" | "risk" | "backtest" | "journal";
 const TABS: { v: View; label: string }[] = [
   { v: "all", label: "Dashboard" },
+  { v: "gap", label: "Gap Radar" },
+  { v: "pnl", label: "Live PnL" },
   { v: "bandar", label: "Bandar" },
   { v: "screener", label: "Screener" },
   { v: "risk", label: "Risk" },
   { v: "backtest", label: "Backtest" },
   { v: "journal", label: "Journal" },
 ];
+
+const PATTERN_LABELS: Record<string, { title: string; emoji: string; subtitle: string }> = {
+  GAP_FILL_BULL: { title: "GAP FILL BULLISH", emoji: "💎", subtitle: "REVERSAL — gap down dibayar ke atas" },
+  GAP_AND_GO: { title: "GAP & GO", emoji: "🚀", subtitle: "BULLISH continuation dengan follow-through" },
+  GAP_UP_FAIL: { title: "GAP UP FAIL", emoji: "⚠️", subtitle: "EXHAUSTION trap — distribusi" },
+  GAP_DN_CONT: { title: "GAP DOWN CONTINUATION", emoji: "💀", subtitle: "BEARISH persist — hindari" },
+};
 
 type Quote = { value: number; change: number; change_pct: number } | null;
 
@@ -95,6 +104,16 @@ export default function Dashboard() {
   const [modal, setModal] = useState("500.000.000");
   const [entry, setEntry] = useState("9.825");
   const [clock, setClock] = useState("");
+  const [gapData, setGapData] = useState<GapRadarResponse | null>(null);
+  const [pnlData, setPnlData] = useState<PnlSummary | null>(null);
+  const [tradesData, setTradesData] = useState<TradeRecord[] | null>(null);
+
+  // Fetch gap radar / pnl / trades on demand per view
+  useEffect(() => {
+    if (view === "gap" || view === "all") api.gapRadar().then(setGapData);
+    if (view === "pnl" || view === "all") api.pnlSummary().then(setPnlData);
+    if (view === "journal") api.tradesList().then(setTradesData);
+  }, [view]);
 
   // Restore last selection from localStorage on mount; default tetap BBCA.
   useEffect(() => {
@@ -233,7 +252,7 @@ export default function Dashboard() {
         </div>
 
         {/* INDEX */}
-        <div className="pnl sec">
+        {show("all") && <div className="pnl sec">
           <div className="idx">
             <IndexCell label="IHSG COMPOSITE" q={indices?.ihsg ?? null} />
             <IndexCell label="LQ45" q={indices?.lq45 ?? null} />
@@ -242,10 +261,10 @@ export default function Dashboard() {
             <div className="ix"><span className="ix-l">BI RATE</span><span className="ix-v mono">6.00%</span><span className="ix-c fl mono">MANUAL</span></div>
             <div className="ix"><span className="ix-l">SMART MONEY</span><span className="ix-v gd mono">—</span><span className="ix-c fl mono">cek per saham</span></div>
           </div>
-        </div>
+        </div>}
 
         {/* REGIME */}
-        <div className="pnl sec">
+        {show("all") && <div className="pnl sec">
           <div className="pnl-h"><span className="pnl-t">Market Regime</span><span className="pnl-n">Multi-Factor Model</span><div className="pnl-r"><span className="pdot" />{live ? "LIVE" : "EOD"}</div></div>
           <div className="reg">
             <span className="reg-tag"><span className="d" /><span className="t">{(regime?.regime || "—").toUpperCase()}</span></span>
@@ -270,10 +289,10 @@ export default function Dashboard() {
             <div className="dc"><div className="dc-l">vs MA200</div><div className="dc-v up mono">{regime?.factors?.ma200 != null ? regime.factors.ma200 : "—"}</div><div className="dc-m">Posisi tren</div></div>
             <div className="dc"><div className="dc-l">Raw Score</div><div className="dc-v mono">{regime?.raw_score ?? "—"}</div><div className="dc-m">-1 .. +1</div></div>
           </div>
-        </div>
+        </div>}
 
         {/* BRIEF + CHART */}
-        <div className="r2 sec">
+        {show("all") && <div className="r2 sec">
           <div className="pnl">
             <div className="pnl-h"><span className="pnl-t">AI Morning Brief</span><span className="pnl-n">Sahamflow Intelligence</span><div className="pnl-r"><span className="pdot" />{clock}</div></div>
             <div className="pnl-b">
@@ -293,11 +312,134 @@ export default function Dashboard() {
             <div className="pnl-h"><span className="pnl-t">IHSG 30D</span><span className="pnl-n">Daily{ihsg ? "" : " · contoh"}</span><div className="pnl-r gd">{ihsg?.last != null ? ihsg.last.toLocaleString("id-ID") : "—"}</div></div>
             <div className="pnl-b"><div className="cw"><IhsgChart data={ihsg?.closes?.length ? ihsg.closes : IHSG_30D} /></div></div>
           </div>
-        </div>
+        </div>}
 
         {/* SMART ANALYSIS — per-stock buy-side intel */}
-        <div id="smart-analysis-anchor" />
-        <SmartAnalysis ticker={sel} />
+        {show("all") && <div id="smart-analysis-anchor" />}
+        {show("all") && <SmartAnalysis ticker={sel} />}
+
+        {/* GAP RADAR PAGE */}
+        {show("gap") && <div className="pnl sec">
+          <div className="pnl-h">
+            <span className="pnl-t">📊 Gap Radar — IDX LQ45</span>
+            <span className="pnl-n">{gapData?.ihsg?.date ? `EOD ${gapData.ihsg.date}` : "loading…"}</span>
+            <div className="pnl-r"><span className="pdot" />SMART MONEY PATTERN</div>
+          </div>
+          <div className="pnl-b">
+            {!gapData && <div className="alrt alrt-i">Memuat data gap radar…</div>}
+            {gapData && (
+              <>
+                <div className="alrt alrt-i" style={{ marginBottom: 12 }}>
+                  <b>Breadth</b>: {gapData.breadth.bullish}🟢 / {gapData.breadth.bearish}🔴 dari {gapData.breadth.total_scanned} ({gapData.breadth.bullish_pct}% bull / {gapData.breadth.bearish_pct}% bear)
+                  → <b>{gapData.breadth.label}</b>
+                  {gapData.ihsg && (
+                    <span> · IHSG {gapData.ihsg.gap_pct >= 0 ? "+" : ""}{gapData.ihsg.gap_pct}% gap · close {gapData.ihsg.close.toLocaleString("id-ID")} · day {gapData.ihsg.day_change_pct >= 0 ? "🟢+" : "🔴"}{gapData.ihsg.day_change_pct}%</span>
+                  )}
+                </div>
+                {["GAP_FILL_BULL", "GAP_AND_GO", "GAP_UP_FAIL", "GAP_DN_CONT"].map((pat) => {
+                  const rows = gapData.groups[pat] || [];
+                  if (!rows.length) return null;
+                  const meta = PATTERN_LABELS[pat];
+                  const stat = gapData.stats[pat];
+                  return (
+                    <div key={pat} style={{ marginBottom: 16 }}>
+                      <div style={{ marginBottom: 6, fontWeight: 600, color: "var(--gold)" }}>
+                        {meta.emoji} {meta.title}
+                        {stat?.n ? <span style={{ marginLeft: 8, fontSize: 11, color: "var(--mute)" }}>hist win {stat.win_rate_pct}% (avg {stat.avg_return_pct! >= 0 ? "+" : ""}{stat.avg_return_pct}%, n={stat.n})</span> : null}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--mute)", marginBottom: 6 }}>{meta.subtitle}</div>
+                      <table className="dt">
+                        <thead><tr><th>Ticker</th><th>Sector</th><th className="r">Gap%</th><th className="r">Day%</th><th className="r">Close</th><th className="r">Vol×</th><th className="r">vs MA200</th><th>Entry Plan</th></tr></thead>
+                        <tbody>
+                          {rows.map((r) => (
+                            <tr key={r.ticker} onClick={() => { setSel(r.ticker); setView("all"); }}>
+                              <td><b>{r.ticker}</b></td>
+                              <td style={{ fontSize: 11 }}>{r.sector || "—"}</td>
+                              <td className={`r mono ${r.gap_pct >= 0 ? "up" : "dn"}`}>{r.gap_pct >= 0 ? "+" : ""}{r.gap_pct}%</td>
+                              <td className={`r mono ${r.day_change_pct >= 0 ? "up" : "dn"}`}>{r.day_change_pct >= 0 ? "+" : ""}{r.day_change_pct}%</td>
+                              <td className="r mono">{r.close.toLocaleString("id-ID")}</td>
+                              <td className="r mono">{r.volume_ratio_20d != null ? `${r.volume_ratio_20d.toFixed(1)}×` : "—"}</td>
+                              <td className={`r mono ${(r.ma200_distance_pct ?? 0) >= 0 ? "up" : "dn"}`}>{r.ma200_distance_pct != null ? `${r.ma200_distance_pct >= 0 ? "+" : ""}${r.ma200_distance_pct}%` : "—"}</td>
+                              <td style={{ fontSize: 11 }}>{r.entry_plan || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 8 }}>⚡ Cross-check sebelum entry: volume real-time, foreign flow di RTI/Stockbit, struktur chart.</div>
+              </>
+            )}
+          </div>
+        </div>}
+
+        {/* LIVE PnL PAGE */}
+        {show("pnl") && <div className="pnl sec">
+          <div className="pnl-h">
+            <span className="pnl-t">📌 Live Performance</span>
+            <span className="pnl-n">Real-time dari Trade table</span>
+            <div className="pnl-r"><span className="pdot" />{pnlData ? "LIVE" : "loading"}</div>
+          </div>
+          <div className="pnl-b">
+            {!pnlData && <div className="alrt alrt-i">Memuat data PnL…</div>}
+            {pnlData && (
+              <>
+                <div className="idx" style={{ marginBottom: 12 }}>
+                  <div className="ix"><span className="ix-l">TOTAL TRADES</span><span className="ix-v mono">{pnlData.totals.trades}</span><span className="ix-c fl mono">{pnlData.totals.open} open · {pnlData.totals.closed} closed</span></div>
+                  <div className="ix"><span className="ix-l">WIN RATE</span><span className="ix-v mono">{pnlData.totals.win_rate_pct}%</span><span className="ix-c fl mono">{pnlData.totals.wins}W / {pnlData.totals.losses}L</span></div>
+                  <div className="ix"><span className="ix-l">TOTAL PnL</span><span className={`ix-v mono ${pnlData.totals.total_pnl_pct >= 0 ? "up" : "dn"}`}>{pnlData.totals.total_pnl_pct >= 0 ? "+" : ""}{pnlData.totals.total_pnl_pct}%</span><span className="ix-c fl mono">equal-weight</span></div>
+                  <div className="ix"><span className="ix-l">AVG WIN</span><span className="ix-v up mono">+{pnlData.totals.avg_win_pct}%</span><span className="ix-c fl mono">per trade</span></div>
+                  <div className="ix"><span className="ix-l">AVG LOSS</span><span className="ix-v dn mono">{pnlData.totals.avg_loss_pct}%</span><span className="ix-c fl mono">per trade</span></div>
+                </div>
+                {pnlData.open_positions.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ marginBottom: 6, fontWeight: 600, color: "var(--gold)" }}>Open Positions ({pnlData.open_positions.length})</div>
+                    <table className="dt">
+                      <thead><tr><th>Ticker</th><th className="r">Entry</th><th className="r">Last</th><th className="r">Unrealized</th><th className="r">SL</th><th className="r">TP</th><th>Setup</th></tr></thead>
+                      <tbody>
+                        {pnlData.open_positions.map((p) => (
+                          <tr key={p.ticker} onClick={() => { setSel(p.ticker); setView("all"); }}>
+                            <td><b>{p.ticker}</b></td>
+                            <td className="r mono">{p.entry.toLocaleString("id-ID")}</td>
+                            <td className="r mono">{p.last.toLocaleString("id-ID")}</td>
+                            <td className={`r mono ${p.unrealized_pct >= 0 ? "up" : "dn"}`}>{p.unrealized_pct >= 0 ? "+" : ""}{p.unrealized_pct}%</td>
+                            <td className="r mono">{p.stop_loss?.toLocaleString("id-ID") || "—"}</td>
+                            <td className="r mono">{p.take_profit?.toLocaleString("id-ID") || "—"}</td>
+                            <td style={{ fontSize: 11 }}>{p.setup || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {pnlData.closed_recent.length > 0 && (
+                  <div>
+                    <div style={{ marginBottom: 6, fontWeight: 600, color: "var(--gold)" }}>Recent Closed (20)</div>
+                    <table className="dt">
+                      <thead><tr><th>Ticker</th><th className="r">Entry</th><th className="r">Exit</th><th className="r">PnL %</th><th>Setup</th><th>Closed</th></tr></thead>
+                      <tbody>
+                        {pnlData.closed_recent.map((c, i) => (
+                          <tr key={i}>
+                            <td><b>{c.ticker}</b></td>
+                            <td className="r mono">{c.entry?.toLocaleString("id-ID") || "—"}</td>
+                            <td className="r mono">{c.exit?.toLocaleString("id-ID") || "—"}</td>
+                            <td className={`r mono ${c.pnl_pct >= 0 ? "up" : "dn"}`}>{c.pnl_pct >= 0 ? "+" : ""}{c.pnl_pct}%</td>
+                            <td style={{ fontSize: 11 }}>{c.setup || "—"}</td>
+                            <td style={{ fontSize: 11 }}>{c.exit_date?.slice(0, 10) || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {pnlData.totals.trades === 0 && (
+                  <div className="alrt alrt-i">Belum ada trade. Signal masuk dari Telegram bot otomatis akan dicatat di sini.</div>
+                )}
+              </>
+            )}
+          </div>
+        </div>}
 
         {/* BANDAR + REVERSAL CANDIDATES */}
         {show("bandar screener") && (
@@ -367,15 +509,50 @@ GET /api/v1/backtest?ticker=BBCA&min_score=0.3
         {/* JOURNAL — populate via POST /api/v1/trades */}
         {show("journal") && (
           <div className="pnl sec">
-            <div className="pnl-h"><span className="pnl-t">Trading Journal · Atribusi P&L</span><span className="pnl-n">Endpoint /api/v1/trades & /trades/attribution</span></div>
-            <div className="pnl-b">
-              <div className="alrt alrt-i"><b>► BELUM ADA TRADE:</b> Catat trade pertama via:
-                <pre style={{ background: "var(--bg2)", padding: 10, borderRadius: 6, fontSize: 10.5, color: "var(--gold)", marginTop: 8, overflowX: "auto" }}>
-{`curl -X POST https://sahamflow.com/api/v1/trades -H "Content-Type: application/json" \\
-  -d '{"ticker":"BBCA","entry_price":5900,"exit_price":6200,"shares":1000,"source":"sahamflow"}'`}
-                </pre>
-                Setelah ada trade, panel ini otomatis menampilkan jurnal & atribusi P&L (sinyal Sahamflow vs diskresi).
+            <div className="pnl-h">
+              <span className="pnl-t">📓 Trading Journal</span>
+              <span className="pnl-n">{tradesData?.length ?? 0} records</span>
+              <div className="pnl-r">
+                <a href="/api/v1/trades/export.csv" className="btn" style={{ textDecoration: "none" }}>⬇ Export CSV</a>
               </div>
+            </div>
+            <div className="pnl-b">
+              {!tradesData && <div className="alrt alrt-i">Memuat trade history…</div>}
+              {tradesData && tradesData.length === 0 && (
+                <div className="alrt alrt-i">Belum ada trade. Signal Telegram otomatis akan tercatat di sini.</div>
+              )}
+              {tradesData && tradesData.length > 0 && (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="dt">
+                    <thead><tr>
+                      <th>Ticker</th><th>Entry Date</th><th className="r">Entry</th>
+                      <th>Exit Date</th><th className="r">Exit</th>
+                      <th className="r">SL</th><th className="r">TP</th>
+                      <th className="r">PnL %</th><th>Setup</th><th>Source</th>
+                    </tr></thead>
+                    <tbody>
+                      {tradesData.map((t, i) => {
+                        const pnl = t.pnl_pct ?? null;
+                        const isOpen = !t.exit_date;
+                        return (
+                          <tr key={t.id || i} onClick={() => { setSel(t.ticker); setView("all"); }}>
+                            <td><b>{t.ticker}</b>{isOpen && <span style={{ marginLeft: 6, fontSize: 10, color: "var(--gold)" }}>OPEN</span>}</td>
+                            <td style={{ fontSize: 11 }}>{t.entry_date?.slice(0, 10) || "—"}</td>
+                            <td className="r mono">{t.entry_price?.toLocaleString("id-ID") || "—"}</td>
+                            <td style={{ fontSize: 11 }}>{t.exit_date?.slice(0, 10) || "—"}</td>
+                            <td className="r mono">{t.exit_price?.toLocaleString("id-ID") || "—"}</td>
+                            <td className="r mono">{t.stop_loss?.toLocaleString("id-ID") || "—"}</td>
+                            <td className="r mono">{t.take_profit?.toLocaleString("id-ID") || "—"}</td>
+                            <td className={`r mono ${pnl != null ? (pnl >= 0 ? "up" : "dn") : ""}`}>{pnl != null ? `${pnl >= 0 ? "+" : ""}${pnl}%` : "—"}</td>
+                            <td style={{ fontSize: 11 }}>{t.setup || "—"}</td>
+                            <td style={{ fontSize: 11 }}>{t.source || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
