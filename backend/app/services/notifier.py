@@ -13,42 +13,77 @@ Setiap alert adalah TICKET LENGKAP gaya hedge fund desk:
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime
+from decimal import Decimal
 
 import httpx
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models import RegimeHistory, SignalCache
+from app.models import RegimeHistory, SignalCache, Trade
 from app.services import signal_intelligence, signal_qualifier
 
 log = logging.getLogger("sahamflow.notifier")
 
 
-def telegram_send(text: str) -> bool:
+def _tg_api(method: str, payload: dict) -> dict | None:
     token = settings.TELEGRAM_BOT_TOKEN
-    chat = settings.TELEGRAM_CHAT_ID
-    if not token or not chat:
-        log.info("Telegram disabled (no token/chat). Skipping: %s", text[:80])
-        return False
+    if not token:
+        return None
     try:
         r = httpx.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={
-                "chat_id": chat,
-                "text": text,
-                "parse_mode": "Markdown",
-                "disable_web_page_preview": True,
-            },
+            f"https://api.telegram.org/bot{token}/{method}",
+            json=payload,
             timeout=15,
         )
         if r.status_code != 200:
-            log.warning("Telegram %s: %s", r.status_code, r.text[:200])
-        return r.status_code == 200
+            log.warning("Telegram %s %s: %s", method, r.status_code, r.text[:200])
+            return None
+        return r.json()
     except Exception as e:
-        log.warning("Telegram send failed: %s", e)
-        return False
+        log.warning("Telegram %s failed: %s", method, e)
+        return None
+
+
+def telegram_send(text: str) -> bool:
+    """Send message, return True/False. (Kept for backward compat.)"""
+    return telegram_send_with_id(text) is not None
+
+
+def telegram_send_with_id(text: str) -> int | None:
+    """Send message, return message_id (or None on failure)."""
+    chat = settings.TELEGRAM_CHAT_ID
+    if not chat:
+        log.info("Telegram disabled (no chat). Skipping: %s", text[:80])
+        return None
+    resp = _tg_api("sendMessage", {
+        "chat_id": chat,
+        "text": text,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+    })
+    if resp and resp.get("ok"):
+        return resp["result"]["message_id"]
+    return None
+
+
+def telegram_pin(message_id: int, disable_notification: bool = True) -> bool:
+    resp = _tg_api("pinChatMessage", {
+        "chat_id": settings.TELEGRAM_CHAT_ID,
+        "message_id": message_id,
+        "disable_notification": disable_notification,
+    })
+    return bool(resp and resp.get("ok"))
+
+
+def telegram_unpin_all() -> bool:
+    resp = _tg_api("unpinAllChatMessages", {
+        "chat_id": settings.TELEGRAM_CHAT_ID,
+    })
+    return bool(resp and resp.get("ok"))
 
 
 def _classify_setup(intel: dict) -> tuple[str, str, str]:
@@ -242,6 +277,47 @@ def _build_ticket(intel: dict, qual: dict) -> str:
     return "\n".join(lines)
 
 
+def _record_trade(db, intel: dict, levels: dict, tp_dict: dict, setup_label: str) -> bool:
+    """Insert an open Trade row so invalidation_monitor dapat track SL/TP.
+
+    Skip kalau ticker masih punya open position (avoid duplicate). TP1/TP2 disimpan
+    di `notes` JSON karena schema Trade hanya punya 1 kolom take_profit.
+    """
+    ticker = intel["ticker"]
+    existing = db.execute(
+        select(Trade).where(Trade.ticker == ticker, Trade.exit_date.is_(None))
+    ).scalar_one_or_none()
+    if existing:
+        log.info("Trade %s sudah open, skip insert.", ticker)
+        return False
+    entry = float(levels.get("entry") or intel["last_close"])
+    sl = float(levels["stop_loss"])
+    notes = {
+        "tp1": tp_dict.get("tp1"),
+        "tp2": tp_dict.get("tp2"),
+        "tp3": tp_dict.get("tp3"),
+        "tp1_hit": False,
+        "tp2_hit": False,
+        "thesis": setup_label,
+        "rr_ratio": levels.get("rr_ratio"),
+        "risk_pct": levels.get("risk_pct"),
+    }
+    trade = Trade(
+        ticker=ticker,
+        entry_price=Decimal(str(entry)),
+        stop_loss=Decimal(str(sl)),
+        take_profit=Decimal(str(tp_dict.get("tp3") or levels.get("take_profit"))),
+        entry_date=datetime.utcnow(),
+        source="sahamflow",
+        setup=setup_label[:80],
+        notes=json.dumps(notes),
+    )
+    db.add(trade)
+    db.commit()
+    log.info("Trade tracked: %s entry=%s sl=%s tp3=%s", ticker, entry, sl, notes.get("tp3"))
+    return True
+
+
 def alert_strong_setups(max_per_run: int = 5, min_score_override: float | None = None) -> dict:
     """Generate qualified tickets and push to Telegram.
 
@@ -306,6 +382,18 @@ def alert_strong_setups(max_per_run: int = 5, min_score_override: float | None =
                 break
             if telegram_send(_build_ticket(intel, qual)):
                 summary["sent"] += 1
+                # Production only — jangan polusi Trade table dengan test signals
+                if min_score_override is None:
+                    levels = intel.get("levels") or {}
+                    entry_v = float(levels.get("entry") or intel["last_close"])
+                    sl_v = levels.get("stop_loss")
+                    if sl_v:
+                        tp_dict = _multi_tp(entry_v, float(sl_v), levels.get("take_profit"))
+                        setup_code, setup_label, _ = _classify_setup(intel)
+                        try:
+                            _record_trade(db, intel, levels, tp_dict, setup_label)
+                        except Exception as e:
+                            log.warning("Failed to record trade %s: %s", intel["ticker"], e)
 
         if summary["sent"] == 0 and candidates:
             blockers_summary = "; ".join(
