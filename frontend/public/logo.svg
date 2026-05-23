@@ -1,45 +1,63 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 240">
   <defs>
-    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#1a1a1d"/>
+    <linearGradient id="lbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0a0b"/>
       <stop offset="100%" stop-color="#000000"/>
     </linearGradient>
-    <linearGradient id="gold2" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#ffe699"/>
+    <linearGradient id="lgold" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#c79a2e"/>
       <stop offset="50%" stop-color="#ffd24a"/>
-      <stop offset="100%" stop-color="#c79a2e"/>
+      <stop offset="100%" stop-color="#ffe699"/>
     </linearGradient>
-    <linearGradient id="goldText" x1="0" y1="0" x2="1" y2="0">
+    <linearGradient id="lgoldText" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#ffe699"/>
       <stop offset="60%" stop-color="#ffd24a"/>
       <stop offset="100%" stop-color="#c79a2e"/>
     </linearGradient>
-    <filter id="glow2" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="4" result="b"/>
+    <linearGradient id="lgreen" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#16a85a"/>
+      <stop offset="100%" stop-color="#22e07a"/>
+    </linearGradient>
+    <filter id="lglow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
 
-  <!-- Mark (icon) -->
+  <!-- Mark (200x200) -->
   <g transform="translate(20 20)">
-    <rect x="0" y="0" width="160" height="160" rx="32" fill="url(#bg2)" stroke="url(#gold2)" stroke-width="2"/>
-    <ellipse cx="80" cy="12" rx="60" ry="24" fill="#ffd24a" opacity="0.12"/>
-    <text x="80" y="115" text-anchor="middle"
-          font-family="'Sora', 'Inter', sans-serif" font-weight="800" font-size="130" letter-spacing="-8"
-          fill="url(#gold2)" filter="url(#glow2)">S</text>
-    <g transform="translate(106 38)">
-      <path d="M 0 18 L 10 8 L 20 14 L 30 2" stroke="url(#gold2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-      <path d="M 24 2 L 30 2 L 30 8" stroke="url(#gold2)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    </g>
+    <rect x="6" y="6" width="188" height="188" rx="40" fill="url(#lbg)"/>
+    <rect x="6" y="6" width="188" height="188" rx="40" fill="none" stroke="url(#lgold)" stroke-width="1.5"/>
+    <ellipse cx="100" cy="18" rx="70" ry="22" fill="#ffd24a" opacity="0.12"/>
+
+    <!-- Trend line faded -->
+    <path d="M 35 156 L 70 128 L 105 98 L 140 66 L 168 38"
+          stroke="url(#lgold)" stroke-width="2" fill="none"
+          stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
+
+    <!-- Candles -->
+    <line x1="63" y1="114" x2="63" y2="160" stroke="url(#lgreen)" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="52" y="124" width="22" height="32" fill="url(#lgreen)" rx="2"/>
+
+    <line x1="100" y1="82" x2="100" y2="152" stroke="url(#lgreen)" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="89" y="92" width="22" height="53" fill="url(#lgreen)" rx="2"/>
+
+    <line x1="138" y1="50" x2="138" y2="145" stroke="url(#lgold)" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="127" y="62" width="22" height="76" fill="url(#lgold)" rx="2" filter="url(#lglow)"/>
+
+    <path d="M 122 54 L 138 38 L 154 54"
+          stroke="url(#lgold)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lglow)"/>
   </g>
 
   <!-- Wordmark -->
-  <text x="210" y="125"
-        font-family="'Sora', 'Inter', sans-serif" font-weight="700" font-size="84" letter-spacing="-3"
-        fill="#f5f5f3">Saham<tspan fill="url(#goldText)">flow</tspan></text>
+  <text x="245" y="138"
+        font-family="'Sora', 'Inter', -apple-system, sans-serif"
+        font-weight="700" font-size="92" letter-spacing="-3.5"
+        fill="#f5f5f3">Saham<tspan fill="url(#lgoldText)">flow</tspan></text>
 
   <!-- Tagline -->
-  <text x="212" y="158"
-        font-family="'JetBrains Mono', monospace" font-weight="500" font-size="16" letter-spacing="3"
-        fill="#a8a8a2" text-transform="uppercase">BUY-SIDE INTEL · IHSG</text>
+  <text x="248" y="180"
+        font-family="'JetBrains Mono', monospace"
+        font-weight="500" font-size="17" letter-spacing="4"
+        fill="#a8a8a2">BUY-SIDE INTEL · IHSG</text>
 </svg>
