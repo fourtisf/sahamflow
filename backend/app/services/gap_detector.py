@@ -358,7 +358,9 @@ def build_gap_radar_text() -> str:
 
     data_date = ihsg.get("date", "?") if ihsg else "?"
     total_scanned = (ihsg or {}).get("_total_scanned", 0)
-    lines = ["📊 *GAP RADAR — IDX LQ45*"]
+    from app.core.config import settings as _s
+    uni_label = {"lq45": "LQ45", "kompas100": "KOMPAS100", "combined": "LQ45+K100"}.get(_s.UNIVERSE.lower(), _s.UNIVERSE.upper())
+    lines = [f"📊 *GAP RADAR — IDX {uni_label}*"]
     lines.append(f"_Data EOD: *{data_date}*  ·  Updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}_")
     lines.append("")
 
