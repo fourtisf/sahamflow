@@ -12,6 +12,7 @@ router = APIRouter(prefix="/regime", tags=["regime"])
 
 
 def _to_response(row: RegimeHistory) -> RegimeResponse:
+    extra = row.extra or {}
     return RegimeResponse(
         date=row.date,
         regime=row.regime,
@@ -19,7 +20,9 @@ def _to_response(row: RegimeHistory) -> RegimeResponse:
         raw_score=float(row.raw_score) if row.raw_score is not None else None,
         breadth_ratio=float(row.breadth_ratio) if row.breadth_ratio is not None else None,
         foreign_flow_5d=row.foreign_flow_5d,
-        factors=(row.extra or {}).get("factors"),
+        factors=extra.get("factors"),
+        modifier=extra.get("modifier"),
+        path_signals=extra.get("path_signals") or {},
     )
 
 

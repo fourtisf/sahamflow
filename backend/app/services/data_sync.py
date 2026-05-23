@@ -22,6 +22,7 @@ from app.models import OHLCVDaily, RegimeHistory, SignalCache, Stock
 from app.services import (
     bandar_detector,
     foreign_flow_analyzer,
+    market_signals,
     regime_classifier,
     technical_analysis,
 )
@@ -213,6 +214,17 @@ def compute_regime(on: date | None = None) -> dict:
         }
         result = regime_classifier.classify_regime(factors)
 
+        # Path-aware modifier from IHSG OHLC (8-day streaks, reversal, gap-fill,
+        # 30/90d returns). Distinguishes "Distribution from top" vs
+        # "Markdown capitulation" vs "Potential Accumulation".
+        try:
+            ihsg_bars = yf.fetch_ohlc_history("^JKSE", period="3mo")
+            path = market_signals.regime_path_modifier(ihsg_bars) if ihsg_bars else {"modifier": None, "signals": {}}
+        except Exception:
+            path = {"modifier": None, "signals": {}}
+        result["modifier"] = path["modifier"]
+        result["path_signals"] = path["signals"]
+
         stmt = insert(RegimeHistory).values(
             date=on,
             regime=result["regime"],
@@ -220,7 +232,13 @@ def compute_regime(on: date | None = None) -> dict:
             breadth_ratio=round(advances / declines, 2) if declines else None,
             foreign_flow_5d=foreign_5d_total if has_foreign else None,
             raw_score=result["raw_score"],
-            extra={"factors": result["factors"], "advances": advances, "declines": declines},
+            extra={
+                "factors": result["factors"],
+                "advances": advances,
+                "declines": declines,
+                "modifier": result.get("modifier"),
+                "path_signals": result.get("path_signals", {}),
+            },
         )
         stmt = stmt.on_conflict_do_update(
             index_elements=["date"],

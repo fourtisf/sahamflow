@@ -6,6 +6,14 @@ export interface RegimeResponse {
   breadth_ratio: number | null;
   foreign_flow_5d: number | null;
   factors: Record<string, number> | null;
+  modifier: string | null;
+  path_signals: {
+    return_30d_pct?: number;
+    return_90d_pct?: number;
+    streak_down?: number;
+    reversal_day?: { streak_length: number; reversal_pct: number } | null;
+    gap_filled_today?: { gap_date: string; gap_top: number; gap_bottom: number } | null;
+  } | null;
 }
 
 export interface ScreenerRow {

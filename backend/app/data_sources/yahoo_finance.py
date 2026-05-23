@@ -129,6 +129,29 @@ def fetch_history(symbol: str, period: str = "1mo") -> list[dict]:
     return out
 
 
+def fetch_ohlc_history(symbol: str, period: str = "3mo") -> list[dict]:
+    """OHLC history for an index/FX symbol. Needed for gap/streak/reversal detection."""
+    raw = yf.download(
+        symbol, period=period, interval="1d", auto_adjust=False, progress=False, threads=False
+    )
+    if raw is None or raw.empty:
+        return []
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.get_level_values(0)
+    df = raw[["Open", "High", "Low", "Close"]].dropna()
+    out = []
+    for idx, row in df.iterrows():
+        d = idx if isinstance(idx, date) else idx.date()
+        out.append({
+            "date": str(d),
+            "open": round(float(row["Open"]), 2),
+            "high": round(float(row["High"]), 2),
+            "low": round(float(row["Low"]), 2),
+            "close": round(float(row["Close"]), 2),
+        })
+    return out
+
+
 def usdidr_change_pct_30d() -> float | None:
     """USD/IDR % change over the trailing ~30d. Positive = rupiah weakening."""
     hist = fetch_history("IDR=X", period="2mo")

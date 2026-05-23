@@ -32,7 +32,7 @@ WEIGHTS = {
 REGIMES = [
     (0.7, "Risk-On Bullish"),
     (0.3, "Accumulation Phase"),
-    (-0.3, "Distribution Phase"),
+    (-0.3, "Transition"),
     (-0.7, "Risk-Off Defensive"),
 ]
 CRASH = "Crash Mode"

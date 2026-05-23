@@ -199,10 +199,19 @@ export default function Dashboard() {
         <div className="pnl sec">
           <div className="pnl-h"><span className="pnl-t">Market Regime</span><span className="pnl-n">Multi-Factor Model</span><div className="pnl-r"><span className="pdot" />{live ? "LIVE" : "EOD"}</div></div>
           <div className="reg">
-            <span className="reg-tag"><span className="d" /><span className="t">{(regime?.regime || "RISK-ON BULLISH").toUpperCase()}</span></span>
+            <span className="reg-tag"><span className="d" /><span className="t">{(regime?.regime || "—").toUpperCase()}</span></span>
+            {regime?.modifier && (
+              <span className="reg-tag" style={{ background: "rgba(255,210,74,0.1)", borderColor: "rgba(255,210,74,0.3)" }}>
+                <span className="t" style={{ color: "var(--gold)" }}>→ {regime.modifier.toUpperCase()}</span>
+              </span>
+            )}
             <span className="reg-txt">
               Breadth <b>{regime?.breadth_ratio != null ? `${regime.breadth_ratio}×` : "—"}</b> ·{" "}
-              Skor model <b>{regime?.raw_score ?? "—"}</b> · Multi-factor IHSG
+              Skor model <b>{regime?.raw_score ?? "—"}</b>
+              {regime?.path_signals?.return_30d_pct != null && (<> · 30D <b>{regime.path_signals.return_30d_pct}%</b></>)}
+              {regime?.path_signals?.streak_down != null && regime.path_signals.streak_down > 0 && (<> · Streak Turun <b>{regime.path_signals.streak_down}D</b></>)}
+              {regime?.path_signals?.reversal_day && (<> · <b className="gd">Reversal Day +{regime.path_signals.reversal_day.reversal_pct}%</b></>)}
+              {regime?.path_signals?.gap_filled_today && (<> · <b className="gd">Gap Closed</b></>)}
             </span>
             <span className="reg-conf">CONFIDENCE <b>{regime?.confidence != null ? `${regime.confidence}%` : "—"}</b></span>
           </div>

@@ -13,6 +13,10 @@ class RegimeResponse(BaseModel):
     breadth_ratio: float | None = None
     foreign_flow_5d: int | None = None
     factors: dict[str, Any] | None = None
+    # Path-aware modifier ("Potential Accumulation", "Markdown Capitulation",
+    # "Distribution Risk") and the raw signals it was derived from.
+    modifier: str | None = None
+    path_signals: dict[str, Any] | None = None
 
 
 class ScreenerRow(BaseModel):
