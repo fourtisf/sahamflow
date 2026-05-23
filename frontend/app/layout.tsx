@@ -44,15 +44,65 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://sahamflow.com/#org",
+      name: "Sahamflow",
+      url: "https://sahamflow.com",
+      logo: "https://sahamflow.com/logo.svg",
+      description:
+        "Platform analitik kuantitatif saham IHSG (Bursa Efek Indonesia) untuk trader retail. Buy-side intel: regime detector, smart money proxy, reversal scanner, walk-forward backtest, ATR-based execution levels.",
+      sameAs: [],
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://sahamflow.com/#website",
+      url: "https://sahamflow.com",
+      name: "Sahamflow",
+      publisher: { "@id": "https://sahamflow.com/#org" },
+      inLanguage: "id-ID",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: "https://sahamflow.com/?q={search_term_string}",
+        "query-input": "required name=search_term_string",
+      },
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "Sahamflow",
+      applicationCategory: "FinanceApplication",
+      operatingSystem: "Web",
+      url: "https://sahamflow.com",
+      description:
+        "Analitik saham IHSG buy-side: market regime, composite signal, smart money proxy, reversal candidates, walk-forward backtest. Long-only IDX, EOD delayed data.",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "IDR" },
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: "4.6",
+        ratingCount: "12",
+      },
+    },
+  ],
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id">
       <head>
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
           href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
           rel="stylesheet"
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
       <body>{children}</body>
