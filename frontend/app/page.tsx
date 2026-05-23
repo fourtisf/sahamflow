@@ -222,8 +222,8 @@ export default function Dashboard() {
           <div>
             <div className="htitle">Selamat datang di <span className="goldtext">Sahamflow</span></div>
             <div className="hsub">
-              {regime?.regime ? `Regime: ${regime.regime}` : "IHSG"} ·{" "}
-              {live ? "Data sinyal terkini dari backend" : "Menunggu sinkronisasi data backend"}
+              {regime?.regime ? `Regime · ${regime.regime}` : "Menunggu data IHSG…"}
+              {regime?.modifier ? ` → ${regime.modifier}` : ""}
             </div>
           </div>
           <div className="hact">
