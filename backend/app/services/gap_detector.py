@@ -20,25 +20,25 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.database import SessionLocal
 from app.models import OHLCVDaily
 
 log = logging.getLogger("sahamflow.gap")
 
 
 def compute_overnight_gap(db: Session, ticker: str) -> dict | None:
-    """Return latest gap analysis or None if data insufficient.
+    """Latest gap analysis dengan enrichment lengkap (smart-money grade).
 
-    {
-      'gap_pct', 'severity', 'direction', 'interpretation',
-      'open', 'prev_close', 'close', 'day_change_pct', 'date',
-    }
+    Returns dict dengan: gap_pct, severity, direction, interpretation, open,
+    prev_close, close, day_change_pct, date, high, low,
+    volume_ratio_20d, ma200_distance_pct, foreign_net_today, foreign_net_5d.
     """
     rows = (
         db.execute(
             select(OHLCVDaily)
             .where(OHLCVDaily.ticker == ticker)
             .order_by(OHLCVDaily.date.desc())
-            .limit(2)
+            .limit(210)
         )
         .scalars()
         .all()
@@ -46,15 +46,36 @@ def compute_overnight_gap(db: Session, ticker: str) -> dict | None:
     if len(rows) < 2:
         return None
 
-    today, yesterday = rows[0], rows[1]
+    rows = list(reversed(rows))  # oldest → newest for indicator math
+    today, yesterday = rows[-1], rows[-2]
     if not today.open or not yesterday.close:
         return None
 
     open_ = float(today.open)
     prev_close = float(yesterday.close)
     close = float(today.close) if today.close else open_
+    high = float(today.high) if today.high else close
+    low = float(today.low) if today.low else open_
     gap_pct = round((open_ / prev_close - 1) * 100, 2)
     day_change_pct = round((close / prev_close - 1) * 100, 2)
+
+    # Volume ratio vs MA20
+    volumes = [int(r.volume or 0) for r in rows[-21:]]
+    vol_today = volumes[-1] if volumes else 0
+    vol_ma20 = sum(volumes[:-1]) / max(len(volumes) - 1, 1) if len(volumes) > 1 else 0
+    volume_ratio_20d = round(vol_today / vol_ma20, 2) if vol_ma20 > 0 else None
+
+    # MA200 distance
+    closes_200 = [float(r.close) for r in rows[-200:] if r.close is not None]
+    ma200_distance_pct = None
+    if len(closes_200) >= 30:  # minimal 30 bar untuk MA bermakna
+        ma_val = sum(closes_200) / len(closes_200)
+        ma200_distance_pct = round((close / ma_val - 1) * 100, 2)
+
+    # Foreign flow
+    foreign_net_today = int(today.foreign_net) if today.foreign_net is not None else None
+    foreign_net_5d = sum(int(r.foreign_net or 0) for r in rows[-5:] if r.foreign_net is not None) or None
+    foreign_net_5d = int(foreign_net_5d) if foreign_net_5d else None
 
     abs_g = abs(gap_pct)
     if abs_g < 1.0:
@@ -79,8 +100,14 @@ def compute_overnight_gap(db: Session, ticker: str) -> dict | None:
         "open": open_,
         "prev_close": prev_close,
         "close": close,
+        "high": high,
+        "low": low,
         "day_change_pct": day_change_pct,
         "date": str(today.date),
+        "volume_ratio_20d": volume_ratio_20d,
+        "ma200_distance_pct": ma200_distance_pct,
+        "foreign_net_today": foreign_net_today,
+        "foreign_net_5d": foreign_net_5d,
     }
 
 
@@ -221,6 +248,35 @@ PATTERN_META = {
 }
 
 
+def _entry_plan(record: dict) -> str | None:
+    """Concise entry/SL plan per pola."""
+    pat = record.get("pattern")
+    high = record.get("high")
+    low = record.get("low")
+    close = record.get("close")
+    open_ = record.get("open")
+    if not (high and low and close):
+        return None
+    if pat == "GAP_FILL_BULL":
+        return f"entry > `{high:,.0f}` (high)  ·  SL `{low:,.0f}` (low)"
+    if pat == "GAP_AND_GO":
+        return f"entry pullback ke `{open_:,.0f}` (gap)  ·  SL `{low:,.0f}`"
+    if pat == "GAP_UP_FAIL":
+        return "AVOID — tunggu konfirmasi reclaim high atau setup baru"
+    if pat == "GAP_DN_CONT":
+        return "AVOID — jangan averaging, tunggu reversal candle + volume"
+    return None
+
+
+def _bulk_sectors() -> dict[str, str]:
+    """Single query untuk sector mapping. Return {ticker: sector or 'Unknown'}."""
+    from app.models import Stock
+
+    with SessionLocal() as db:
+        rows = db.execute(select(Stock.ticker, Stock.sector)).all()
+    return {t: (s or "Unknown") for t, s in rows}
+
+
 def scan_universe_gaps() -> tuple[dict, list[dict]]:
     """Scan semua ticker di universe untuk gap notable. Returns (ihsg_gap, notable_list).
 
@@ -231,34 +287,43 @@ def scan_universe_gaps() -> tuple[dict, list[dict]]:
     from app.core.database import SessionLocal
 
     ihsg = compute_ihsg_gap()
+    sectors = _bulk_sectors()
     notable = []
+    total_scanned = 0
     with SessionLocal() as db:
         for t in settings.universe:
             s = compute_overnight_gap(db, t)
             if not s:
                 continue
+            total_scanned += 1
             pattern = classify_gap_pattern(s["gap_pct"], s.get("day_change_pct", 0))
             if not pattern:
                 continue
             s["ticker"] = t
             s["pattern"] = pattern
+            s["sector"] = sectors.get(t, "Unknown")
             notable.append(s)
+    ihsg = ihsg or {}
+    ihsg["_total_scanned"] = total_scanned
     return ihsg, notable
 
 
 def build_gap_radar_text() -> str:
-    """Bangun pinned message GAP RADAR untuk semua ticker notable."""
+    """Pinned GAP RADAR — smart money grade dengan volume, trend, foreign,
+    sector, breadth, win rate, dan entry plan per pola."""
     from datetime import datetime
+    from app.services import pattern_stats as _ps
 
     ihsg, notable = scan_universe_gaps()
+    stats = _ps.get_cached()
 
-    data_date = ihsg["date"] if ihsg else "?"
+    data_date = ihsg.get("date", "?") if ihsg else "?"
+    total_scanned = (ihsg or {}).get("_total_scanned", 0)
     lines = ["📊 *GAP RADAR — IDX LQ45*"]
     lines.append(f"_Data EOD: *{data_date}*  ·  Updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}_")
-    lines.append("_Gap = open hari ini vs close hari sebelumnya. Close = penutupan terakhir._")
     lines.append("")
 
-    if ihsg:
+    if ihsg and ihsg.get("date"):
         emoji = "📈" if ihsg["direction"] == "up" else "📉" if ihsg["direction"] == "down" else "➖"
         day_pct = ihsg.get("day_change_pct", 0)
         day_emoji = "🟢" if day_pct > 0 else "🔴" if day_pct < 0 else "⚪"
@@ -268,22 +333,68 @@ def build_gap_radar_text() -> str:
         )
     else:
         lines.append("➖ *IHSG* : data tidak tersedia")
+
+    # === MARKET BREADTH ===
+    counts = {p: sum(1 for n in notable if n["pattern"] == p) for p in PATTERN_META}
+    bullish = counts["GAP_FILL_BULL"] + counts["GAP_AND_GO"]
+    bearish = counts["GAP_UP_FAIL"] + counts["GAP_DN_CONT"]
+    bull_pct = bullish * 100 / total_scanned if total_scanned else 0
+    bear_pct = bearish * 100 / total_scanned if total_scanned else 0
+    breadth_label = "BULLISH SKEW" if bull_pct > bear_pct * 1.5 else "BEARISH SKEW" if bear_pct > bull_pct * 1.5 else "MIXED"
+    lines.append(
+        f"📐 *Breadth* : {bullish}🟢 / {bearish}🔴 dari {total_scanned} ({bull_pct:.0f}% bull / {bear_pct:.0f}% bear) → *{breadth_label}*"
+    )
     lines.append("")
 
     if not notable:
         lines.append("_Tidak ada saham dengan pola gap notable. Market tenang._")
         return "\n".join(lines)
 
-    def _row(n: dict, emoji: str) -> str:
+    def _row(n: dict, emoji: str) -> list[str]:
         day = n.get("day_change_pct", 0)
         day_e = "🟢" if day > 0 else "🔴" if day < 0 else "⚪"
-        return (
-            f"  {emoji} `{n['ticker']:<5}` gap {n['gap_pct']:+.2f}%  "
-            f"close `{n['close']:,.0f}`  day {day_e}{day:+.2f}%"
-        )
+        # Volume confirmation
+        vr = n.get("volume_ratio_20d")
+        if vr is None:
+            vol_str = "vol —"
+        elif vr >= 2.0:
+            vol_str = f"vol *{vr:.1f}×*🔥"
+        elif vr >= 1.5:
+            vol_str = f"vol *{vr:.1f}×*"
+        elif vr < 0.7:
+            vol_str = f"vol {vr:.1f}×⚠️ kering"
+        else:
+            vol_str = f"vol {vr:.1f}×"
+        # Trend context (MA200)
+        mad = n.get("ma200_distance_pct")
+        if mad is None:
+            trend = ""
+        elif mad > 5:
+            trend = " · UPTREND ✅"
+        elif mad < -5:
+            trend = " · DOWNTREND ⚠️"
+        else:
+            trend = " · sideways"
+        # Foreign flow
+        fn = n.get("foreign_net_5d")
+        if fn is None or fn == 0:
+            ff_str = ""
+        elif fn > 0:
+            ff_str = f" · FF 5D +{fn/1e9:.1f}B 🟢"
+        else:
+            ff_str = f" · FF 5D {fn/1e9:.1f}B 🔴"
+        sector = n.get("sector", "")
+        sector_str = f" [{sector[:10]}]" if sector and sector != "Unknown" else ""
 
-    # Render dalam urutan smart-money priority: bullish reversal dulu,
-    # lalu bullish continuation, lalu exhaustion warnings, lalu bearish persist.
+        out = [
+            f"  {emoji} `{n['ticker']:<5}` gap {n['gap_pct']:+.2f}%  day {day_e}{day:+.2f}%  close `{n['close']:,.0f}`",
+            f"     {vol_str}{trend}{ff_str}{sector_str}",
+        ]
+        plan = _entry_plan(n)
+        if plan:
+            out.append(f"     ↳ {plan}")
+        return out
+
     order = ["GAP_FILL_BULL", "GAP_AND_GO", "GAP_UP_FAIL", "GAP_DN_CONT"]
     for pat in order:
         group = [n for n in notable if n["pattern"] == pat]
@@ -291,10 +402,24 @@ def build_gap_radar_text() -> str:
             continue
         meta = PATTERN_META[pat]
         group.sort(key=meta["sort_key"])
-        lines.append(f"*━━ {meta['title']} ━━*")
+        # Header dengan win rate historis
+        wr = stats.get(pat, {})
+        wr_str = ""
+        if wr.get("n"):
+            wr_str = f"  ·  hist win {wr['win_rate_pct']}% (avg {wr['avg_return_pct']:+.2f}%, n={wr['n']})"
+        lines.append(f"*━━ {meta['title']} ━━*{wr_str}")
         lines.append(f"_{meta['subtitle']}_")
-        for n in group[:12]:
-            lines.append(_row(n, meta["row_emoji"]))
+        # Sector clustering note
+        sector_groups: dict[str, int] = {}
+        for n in group:
+            sec = n.get("sector", "Unknown")
+            sector_groups[sec] = sector_groups.get(sec, 0) + 1
+        top_sec = sorted(sector_groups.items(), key=lambda x: -x[1])
+        cluster = ", ".join(f"{s}×{c}" for s, c in top_sec[:3] if c >= 2)
+        if cluster:
+            lines.append(f"_Sector cluster: {cluster} → ada rotation_")
+        for n in group[:10]:
+            lines.extend(_row(n, meta["row_emoji"]))
         lines.append("")
 
     lines.append("*━━ SMART MONEY NOTES ━━*")
