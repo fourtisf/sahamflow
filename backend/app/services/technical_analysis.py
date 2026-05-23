@@ -176,11 +176,11 @@ def composite_score(ohlcv: pd.DataFrame) -> tuple[float, dict[str, float]]:
 
 def signal_label(score: float) -> str:
     if score >= 0.5:
-        return "Str Buy"
+        return "Strong Buy"
     if score >= 0.2:
         return "Buy"
     if score > -0.2:
         return "Hold"
     if score > -0.5:
         return "Sell"
-    return "Str Sell"
+    return "Strong Sell"

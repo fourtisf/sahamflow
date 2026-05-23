@@ -38,9 +38,9 @@ def test_composite_score_bounded():
 
 
 def test_signal_labels():
-    assert technical_analysis.signal_label(0.6) == "Str Buy"
+    assert technical_analysis.signal_label(0.6) == "Strong Buy"
     assert technical_analysis.signal_label(0.0) == "Hold"
-    assert technical_analysis.signal_label(-0.6) == "Str Sell"
+    assert technical_analysis.signal_label(-0.6) == "Strong Sell"
 
 
 def test_regime_classify_bands():
