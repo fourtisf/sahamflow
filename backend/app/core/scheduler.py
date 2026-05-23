@@ -52,6 +52,18 @@ def _refresh_gap_radar():
     gap_detector.refresh_gap_radar_pinned()
 
 
+def _send_weekly_report():
+    from app.services import weekly_report
+
+    weekly_report.send_weekly_report()
+
+
+def _poll_telegram_commands():
+    from app.services import telegram_commands
+
+    telegram_commands.poll_updates()
+
+
 def start_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is not None:
@@ -72,6 +84,10 @@ def start_scheduler() -> BackgroundScheduler:
     # Gap radar: refresh setelah EOD sync + pagi sebelum market buka (jam 8:00).
     sched.add_job(_refresh_gap_radar, "cron", hour=18, minute=55, id="gap_radar_eod")
     sched.add_job(_refresh_gap_radar, "cron", hour=8, minute=0, day_of_week="mon-fri", id="gap_radar_premarket")
+    # Weekly performance report — Sabtu pagi 08:00 WIB.
+    sched.add_job(_send_weekly_report, "cron", day_of_week="sat", hour=8, minute=0, id="weekly_report")
+    # Telegram command polling — setiap 60 detik untuk /watch, /status, dll.
+    sched.add_job(_poll_telegram_commands, "interval", seconds=60, id="tg_command_poll")
     sched.add_job(_morning_brief, "cron", hour=7, minute=0, id="morning_brief")
     sched.start()
     log.info("Scheduler started (tz=%s)", settings.TIMEZONE)

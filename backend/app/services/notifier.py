@@ -449,7 +449,9 @@ def alert_strong_setups(max_per_run: int = 5, min_score_override: float | None =
             header_lines.append(f"  ⚠️ _TEST MODE — threshold composite diturunkan ke {threshold}_")
         telegram_send("\n".join(header_lines))
 
-        watchlist = settings.watchlist_set
+        # Watchlist: Telegram-managed (via /watch) override env-based
+        from app.services import telegram_commands
+        watchlist = telegram_commands.get_active_watchlist()
         candidates = [r for r in rows if (r.composite_score or 0) >= threshold]
         # IHSG gap diambil sekali per run (di-share ke semua ticker)
         ihsg_gap = None

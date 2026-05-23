@@ -299,12 +299,21 @@ def _entry_plan(record: dict) -> str | None:
 
 
 def _bulk_sectors() -> dict[str, str]:
-    """Single query untuk sector mapping. Return {ticker: sector or 'Unknown'}."""
+    """Sector mapping: try Stock.sector from DB, fallback ke hardcoded LQ45 map."""
     from app.models import Stock
+    from app.services.sector_mapping import get_sector
 
     with SessionLocal() as db:
         rows = db.execute(select(Stock.ticker, Stock.sector)).all()
-    return {t: (s or "Unknown") for t, s in rows}
+    out: dict[str, str] = {}
+    for t, s in rows:
+        out[t] = s or get_sector(t)
+    # Ensure semua LQ45 ada mapping (kalau Stock row belum ada di DB)
+    from app.core.config import LQ45_TICKERS
+    for t in LQ45_TICKERS:
+        if t not in out or out[t] == "Unknown":
+            out[t] = get_sector(t)
+    return out
 
 
 def scan_universe_gaps() -> tuple[dict, list[dict]]:

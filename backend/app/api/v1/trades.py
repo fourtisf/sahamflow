@@ -1,4 +1,8 @@
+import csv
+import io
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -83,6 +87,38 @@ def equity_curve(db: Session = Depends(get_db)):
         "max_drawdown_pct": round(max_dd, 2),
         "curve": curve,
     }
+
+
+@router.get("/export.csv")
+def export_csv(db: Session = Depends(get_db)):
+    """Download semua trade sebagai CSV — untuk journal manual / spreadsheet."""
+    rows = db.execute(select(Trade).order_by(Trade.entry_date.desc())).scalars().all()
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "ticker", "entry_date", "exit_date", "entry_price", "exit_price",
+        "stop_loss", "take_profit", "pnl_pct", "setup", "source", "notes",
+    ])
+    for r in rows:
+        writer.writerow([
+            r.ticker,
+            r.entry_date.isoformat() if r.entry_date else "",
+            r.exit_date.isoformat() if r.exit_date else "",
+            float(r.entry_price) if r.entry_price else "",
+            float(r.exit_price) if r.exit_price else "",
+            float(r.stop_loss) if r.stop_loss else "",
+            float(r.take_profit) if r.take_profit else "",
+            float(r.pnl_pct) if r.pnl_pct else "",
+            r.setup or "",
+            r.source or "",
+            (r.notes or "").replace("\n", " ")[:200],
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sahamflow_trades.csv"},
+    )
 
 
 @router.get("/attribution")
